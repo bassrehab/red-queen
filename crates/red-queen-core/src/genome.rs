@@ -75,4 +75,24 @@ mod tests {
         let b = BehaviorDescriptor::new(vec![3.0, 4.0]);
         assert!((a.distance(&b) - 5.0).abs() < 1e-10);
     }
+
+    #[test]
+    fn test_behavior_distance_same_point() {
+        let a = BehaviorDescriptor::new(vec![1.0, 2.0, 3.0]);
+        let b = BehaviorDescriptor::new(vec![1.0, 2.0, 3.0]);
+        assert!((a.distance(&b)).abs() < 1e-10);
+    }
+
+    #[test]
+    fn test_behavior_distance_single_dimension() {
+        let a = BehaviorDescriptor::new(vec![0.0]);
+        let b = BehaviorDescriptor::new(vec![5.0]);
+        assert!((a.distance(&b) - 5.0).abs() < 1e-10);
+    }
+
+    #[test]
+    fn test_behavior_descriptor_new() {
+        let desc = BehaviorDescriptor::new(vec![1.0, 2.0, 3.0]);
+        assert_eq!(desc.values, vec![1.0, 2.0, 3.0]);
+    }
 }

@@ -76,3 +76,89 @@ pub trait Fitness<G: Genome>: Send + Sync {
         true
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_fitness_value_single_primary() {
+        let fitness = FitnessValue::Single(0.75);
+        assert!((fitness.primary() - 0.75).abs() < 1e-10);
+    }
+
+    #[test]
+    fn test_fitness_value_multi_primary() {
+        let fitness = FitnessValue::Multi(vec![0.5, 0.8, 0.3]);
+        assert!((fitness.primary() - 0.5).abs() < 1e-10);
+    }
+
+    #[test]
+    fn test_fitness_value_multi_empty() {
+        let fitness = FitnessValue::Multi(vec![]);
+        assert!((fitness.primary() - 0.0).abs() < 1e-10);
+    }
+
+    #[test]
+    fn test_fitness_value_lexicase_primary() {
+        let fitness = FitnessValue::Lexicase(vec![
+            ("case1".to_string(), 0.9),
+            ("case2".to_string(), 0.7),
+        ]);
+        assert!((fitness.primary() - 0.9).abs() < 1e-10);
+    }
+
+    #[test]
+    fn test_fitness_value_lexicase_empty() {
+        let fitness = FitnessValue::Lexicase(vec![]);
+        assert!((fitness.primary() - 0.0).abs() < 1e-10);
+    }
+
+    #[test]
+    fn test_dominates_single() {
+        let a = FitnessValue::Single(0.8);
+        let b = FitnessValue::Single(0.5);
+        assert!(a.dominates(&b));
+        assert!(!b.dominates(&a));
+    }
+
+    #[test]
+    fn test_dominates_single_equal() {
+        let a = FitnessValue::Single(0.5);
+        let b = FitnessValue::Single(0.5);
+        assert!(!a.dominates(&b));
+        assert!(!b.dominates(&a));
+    }
+
+    #[test]
+    fn test_dominates_multi() {
+        let a = FitnessValue::Multi(vec![0.8, 0.7]);
+        let b = FitnessValue::Multi(vec![0.5, 0.6]);
+        assert!(a.dominates(&b));
+        assert!(!b.dominates(&a));
+    }
+
+    #[test]
+    fn test_dominates_multi_pareto_incomparable() {
+        // Neither dominates - on Pareto front
+        let a = FitnessValue::Multi(vec![0.8, 0.3]);
+        let b = FitnessValue::Multi(vec![0.5, 0.9]);
+        assert!(!a.dominates(&b));
+        assert!(!b.dominates(&a));
+    }
+
+    #[test]
+    fn test_dominates_multi_equal() {
+        let a = FitnessValue::Multi(vec![0.5, 0.5]);
+        let b = FitnessValue::Multi(vec![0.5, 0.5]);
+        assert!(!a.dominates(&b));
+    }
+
+    #[test]
+    fn test_evaluation_metadata_default() {
+        let meta = EvaluationMetadata::default();
+        assert_eq!(meta.duration_ms, 0);
+        assert_eq!(meta.queries, 0);
+        assert!(meta.notes.is_none());
+    }
+}

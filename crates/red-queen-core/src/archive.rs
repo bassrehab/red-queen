@@ -116,3 +116,216 @@ impl<G: Genome> Archive<G> for MapElitesArchive<G> {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::fitness::FitnessValue;
+    use rand::Rng;
+
+    // Simple test genome
+    #[derive(Clone, Debug)]
+    struct TestGenome {
+        value: f64,
+    }
+
+    impl Genome for TestGenome {
+        type Phenotype = f64;
+
+        fn random<R: Rng>(rng: &mut R) -> Self {
+            Self {
+                value: rng.gen_range(0.0..1.0),
+            }
+        }
+
+        fn mutate<R: Rng>(&mut self, rng: &mut R, _rate: f64) {
+            self.value = rng.gen_range(0.0..1.0);
+        }
+
+        fn crossover<R: Rng>(&self, other: &Self, _rng: &mut R) -> Self {
+            Self {
+                value: (self.value + other.value) / 2.0,
+            }
+        }
+
+        fn to_phenotype(&self) -> f64 {
+            self.value
+        }
+    }
+
+    fn make_individual(value: f64, fitness: f64, behavior: Vec<f64>) -> Individual<TestGenome> {
+        Individual {
+            genome: TestGenome { value },
+            fitness: Some(FitnessValue::Single(fitness)),
+            behavior: Some(BehaviorDescriptor::new(behavior)),
+            birth_generation: 0,
+        }
+    }
+
+    #[test]
+    fn test_archive_coverage_percentage() {
+        let coverage = ArchiveCoverage {
+            filled: 25,
+            total: 100,
+        };
+        assert!((coverage.percentage() - 0.25).abs() < 1e-10);
+    }
+
+    #[test]
+    fn test_map_elites_empty() {
+        let dimensions = vec![
+            BehaviorDimension {
+                name: "dim1".to_string(),
+                min: 0.0,
+                max: 1.0,
+                bins: 10,
+            },
+            BehaviorDimension {
+                name: "dim2".to_string(),
+                min: 0.0,
+                max: 1.0,
+                bins: 10,
+            },
+        ];
+        let archive: MapElitesArchive<TestGenome> = MapElitesArchive::new(dimensions);
+
+        assert_eq!(archive.get_all().len(), 0);
+        let coverage = archive.coverage();
+        assert_eq!(coverage.filled, 0);
+        assert_eq!(coverage.total, 100); // 10 * 10
+    }
+
+    #[test]
+    fn test_map_elites_add_individual() {
+        let dimensions = vec![BehaviorDimension {
+            name: "dim1".to_string(),
+            min: 0.0,
+            max: 1.0,
+            bins: 10,
+        }];
+        let mut archive: MapElitesArchive<TestGenome> = MapElitesArchive::new(dimensions);
+
+        let ind = make_individual(0.5, 1.0, vec![0.5]);
+        assert!(archive.add(ind));
+
+        assert_eq!(archive.get_all().len(), 1);
+        assert_eq!(archive.coverage().filled, 1);
+    }
+
+    #[test]
+    fn test_map_elites_reject_no_behavior() {
+        let dimensions = vec![BehaviorDimension {
+            name: "dim1".to_string(),
+            min: 0.0,
+            max: 1.0,
+            bins: 10,
+        }];
+        let mut archive: MapElitesArchive<TestGenome> = MapElitesArchive::new(dimensions);
+
+        let ind = Individual {
+            genome: TestGenome { value: 0.5 },
+            fitness: Some(FitnessValue::Single(1.0)),
+            behavior: None, // No behavior
+            birth_generation: 0,
+        };
+
+        assert!(!archive.add(ind));
+        assert_eq!(archive.get_all().len(), 0);
+    }
+
+    #[test]
+    fn test_map_elites_replace_with_better() {
+        let dimensions = vec![BehaviorDimension {
+            name: "dim1".to_string(),
+            min: 0.0,
+            max: 1.0,
+            bins: 10,
+        }];
+        let mut archive: MapElitesArchive<TestGenome> = MapElitesArchive::new(dimensions);
+
+        // Add first individual
+        let ind1 = make_individual(0.5, 0.3, vec![0.55]);
+        assert!(archive.add(ind1));
+
+        // Add better individual to same cell
+        let ind2 = make_individual(0.6, 0.8, vec![0.55]);
+        assert!(archive.add(ind2));
+
+        // Should still have 1 individual (replaced)
+        assert_eq!(archive.get_all().len(), 1);
+        assert!((archive.get_all()[0].fitness_value() - 0.8).abs() < 1e-10);
+    }
+
+    #[test]
+    fn test_map_elites_reject_worse() {
+        let dimensions = vec![BehaviorDimension {
+            name: "dim1".to_string(),
+            min: 0.0,
+            max: 1.0,
+            bins: 10,
+        }];
+        let mut archive: MapElitesArchive<TestGenome> = MapElitesArchive::new(dimensions);
+
+        // Add first individual with high fitness
+        let ind1 = make_individual(0.5, 0.9, vec![0.55]);
+        assert!(archive.add(ind1));
+
+        // Try to add worse individual to same cell
+        let ind2 = make_individual(0.6, 0.3, vec![0.55]);
+        assert!(!archive.add(ind2));
+
+        // Should still have original
+        assert!((archive.get_all()[0].fitness_value() - 0.9).abs() < 1e-10);
+    }
+
+    #[test]
+    fn test_map_elites_different_cells() {
+        let dimensions = vec![BehaviorDimension {
+            name: "dim1".to_string(),
+            min: 0.0,
+            max: 1.0,
+            bins: 10,
+        }];
+        let mut archive: MapElitesArchive<TestGenome> = MapElitesArchive::new(dimensions);
+
+        // Add to different cells
+        let ind1 = make_individual(0.1, 0.5, vec![0.15]); // bin 1
+        let ind2 = make_individual(0.5, 0.5, vec![0.55]); // bin 5
+        let ind3 = make_individual(0.9, 0.5, vec![0.95]); // bin 9
+
+        assert!(archive.add(ind1));
+        assert!(archive.add(ind2));
+        assert!(archive.add(ind3));
+
+        assert_eq!(archive.get_all().len(), 3);
+        assert_eq!(archive.coverage().filled, 3);
+    }
+
+    #[test]
+    fn test_map_elites_2d_grid() {
+        let dimensions = vec![
+            BehaviorDimension {
+                name: "x".to_string(),
+                min: 0.0,
+                max: 1.0,
+                bins: 5,
+            },
+            BehaviorDimension {
+                name: "y".to_string(),
+                min: 0.0,
+                max: 1.0,
+                bins: 5,
+            },
+        ];
+        let mut archive: MapElitesArchive<TestGenome> = MapElitesArchive::new(dimensions);
+
+        // Add to corner cells
+        archive.add(make_individual(0.1, 0.5, vec![0.1, 0.1])); // (0,0)
+        archive.add(make_individual(0.2, 0.5, vec![0.9, 0.1])); // (4,0)
+        archive.add(make_individual(0.3, 0.5, vec![0.1, 0.9])); // (0,4)
+        archive.add(make_individual(0.4, 0.5, vec![0.9, 0.9])); // (4,4)
+
+        assert_eq!(archive.coverage().total, 25); // 5 * 5
+        assert_eq!(archive.coverage().filled, 4);
+    }
+}

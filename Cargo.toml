@@ -6,13 +6,19 @@ members = [
     "crates/red-queen-cli",
     "crates/red-queen-python",
 ]
+# Python bindings require maturin, so exclude from default build
+default-members = [
+    "crates/red-queen-core",
+    "crates/red-queen-llm",
+    "crates/red-queen-cli",
+]
 
 [workspace.package]
 version = "0.1.0"
 edition = "2021"
 license = "Apache-2.0"
 repository = "https://github.com/bassrehab/red-queen"
-authors = ["Subhadip Mitra <hi@catchme.dev>"]
+authors = ["Subhadip Mitra <contact@subhadipmitra.com>"]
 keywords = ["evolution", "adversarial", "ai-safety", "red-team", "llm"]
 categories = ["science", "algorithms", "command-line-utilities"]
 

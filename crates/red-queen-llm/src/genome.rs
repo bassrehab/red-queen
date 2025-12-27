@@ -2,7 +2,7 @@
 
 use rand::seq::SliceRandom;
 use rand::Rng;
-use red_queen_core::genome::{BehaviorDescriptor, Genome};
+use red_queen_core::genome::Genome;
 use serde::{Deserialize, Serialize};
 
 /// Attack strategy types.
@@ -181,8 +181,12 @@ impl LLMAttackGenome {
         // Add core with strategy framing
         let core = match &self.primary_strategy {
             AttackStrategy::Roleplay => {
-                let persona = self.persona.as_ref().map(|p| &p.name).unwrap_or(&"DAN".to_string());
-                format!("You are {}. {}", persona, self.core.content)
+                let persona_name = self
+                    .persona
+                    .as_ref()
+                    .map(|p| p.name.as_str())
+                    .unwrap_or("DAN");
+                format!("You are {}. {}", persona_name, self.core.content)
             }
             AttackStrategy::Hypothetical => {
                 format!(
@@ -350,3 +354,265 @@ impl Genome for LLMAttackGenome {
 
 // Need base64 for encoding
 use base64;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rand_chacha::ChaCha8Rng;
+    use rand::SeedableRng;
+
+    #[test]
+    fn test_attack_strategy_all() {
+        let strategies = AttackStrategy::all();
+        assert_eq!(strategies.len(), 6);
+    }
+
+    #[test]
+    fn test_attack_strategy_behavior_values() {
+        assert!((AttackStrategy::Roleplay.to_behavior_value() - 0.0).abs() < 1e-10);
+        assert!((AttackStrategy::Encoding.to_behavior_value() - 1.0).abs() < 1e-10);
+        assert!((AttackStrategy::DirectJailbreak.to_behavior_value() - 5.0).abs() < 1e-10);
+    }
+
+    #[test]
+    fn test_encoding_all() {
+        let encodings = Encoding::all();
+        assert_eq!(encodings.len(), 6);
+    }
+
+    #[test]
+    fn test_harm_category_all() {
+        let categories = HarmCategory::all();
+        assert_eq!(categories.len(), 7);
+    }
+
+    #[test]
+    fn test_persona_dan() {
+        let persona = Persona::dan();
+        assert_eq!(persona.name, "DAN");
+    }
+
+    #[test]
+    fn test_persona_developer() {
+        let persona = Persona::developer();
+        assert_eq!(persona.name, "Developer");
+    }
+
+    #[test]
+    fn test_genome_random() {
+        let mut rng = ChaCha8Rng::seed_from_u64(42);
+        let genome = LLMAttackGenome::random(&mut rng);
+
+        // Should have a primary strategy
+        assert!(AttackStrategy::all().contains(&genome.primary_strategy));
+        // Should have an encoding
+        assert!(Encoding::all().contains(&genome.encoding));
+    }
+
+    #[test]
+    fn test_genome_to_prompt_roleplay() {
+        let genome = LLMAttackGenome {
+            primary_strategy: AttackStrategy::Roleplay,
+            secondary_strategy: None,
+            encoding: Encoding::None,
+            persona: Some(Persona::dan()),
+            prefix: PromptSection::default(),
+            core: PromptSection {
+                content: "test content".to_string(),
+            },
+            suffix: PromptSection::default(),
+            target_category: HarmCategory::Violence,
+        };
+
+        let prompt = genome.to_prompt();
+        assert!(prompt.contains("You are DAN"));
+        assert!(prompt.contains("test content"));
+    }
+
+    #[test]
+    fn test_genome_to_prompt_hypothetical() {
+        let genome = LLMAttackGenome {
+            primary_strategy: AttackStrategy::Hypothetical,
+            secondary_strategy: None,
+            encoding: Encoding::None,
+            persona: None,
+            prefix: PromptSection::default(),
+            core: PromptSection {
+                content: "test content".to_string(),
+            },
+            suffix: PromptSection::default(),
+            target_category: HarmCategory::Violence,
+        };
+
+        let prompt = genome.to_prompt();
+        assert!(prompt.contains("hypothetical"));
+        assert!(prompt.contains("test content"));
+    }
+
+    #[test]
+    fn test_genome_to_prompt_authority() {
+        let genome = LLMAttackGenome {
+            primary_strategy: AttackStrategy::Authority,
+            secondary_strategy: None,
+            encoding: Encoding::None,
+            persona: None,
+            prefix: PromptSection::default(),
+            core: PromptSection {
+                content: "test content".to_string(),
+            },
+            suffix: PromptSection::default(),
+            target_category: HarmCategory::Violence,
+        };
+
+        let prompt = genome.to_prompt();
+        assert!(prompt.contains("SYSTEM OVERRIDE"));
+        assert!(prompt.contains("test content"));
+    }
+
+    #[test]
+    fn test_genome_to_prompt_base64_encoding() {
+        let genome = LLMAttackGenome {
+            primary_strategy: AttackStrategy::DirectJailbreak,
+            secondary_strategy: None,
+            encoding: Encoding::Base64,
+            persona: None,
+            prefix: PromptSection::default(),
+            core: PromptSection {
+                content: "test".to_string(),
+            },
+            suffix: PromptSection::default(),
+            target_category: HarmCategory::Violence,
+        };
+
+        let prompt = genome.to_prompt();
+        assert!(prompt.contains("base64"));
+        assert!(prompt.contains("dGVzdA==")); // "test" in base64
+    }
+
+    #[test]
+    fn test_genome_to_prompt_rot13_encoding() {
+        let genome = LLMAttackGenome {
+            primary_strategy: AttackStrategy::DirectJailbreak,
+            secondary_strategy: None,
+            encoding: Encoding::ROT13,
+            persona: None,
+            prefix: PromptSection::default(),
+            core: PromptSection {
+                content: "hello".to_string(),
+            },
+            suffix: PromptSection::default(),
+            target_category: HarmCategory::Violence,
+        };
+
+        let prompt = genome.to_prompt();
+        assert!(prompt.contains("ROT13"));
+        assert!(prompt.contains("uryyb")); // "hello" in ROT13
+    }
+
+    #[test]
+    fn test_genome_to_prompt_with_prefix_suffix() {
+        let genome = LLMAttackGenome {
+            primary_strategy: AttackStrategy::DirectJailbreak,
+            secondary_strategy: None,
+            encoding: Encoding::None,
+            persona: None,
+            prefix: PromptSection {
+                content: "PREFIX".to_string(),
+            },
+            core: PromptSection {
+                content: "CORE".to_string(),
+            },
+            suffix: PromptSection {
+                content: "SUFFIX".to_string(),
+            },
+            target_category: HarmCategory::Violence,
+        };
+
+        let prompt = genome.to_prompt();
+        assert!(prompt.contains("PREFIX"));
+        assert!(prompt.contains("CORE"));
+        assert!(prompt.contains("SUFFIX"));
+        // Check order
+        let prefix_pos = prompt.find("PREFIX").unwrap();
+        let core_pos = prompt.find("CORE").unwrap();
+        let suffix_pos = prompt.find("SUFFIX").unwrap();
+        assert!(prefix_pos < core_pos);
+        assert!(core_pos < suffix_pos);
+    }
+
+    #[test]
+    fn test_genome_mutate() {
+        let mut rng = ChaCha8Rng::seed_from_u64(42);
+        let mut genome = LLMAttackGenome::random(&mut rng);
+        let original_strategy = genome.primary_strategy.clone();
+
+        // Mutate with high rate
+        genome.mutate(&mut rng, 1.0);
+
+        // With rate 1.0, something should have changed
+        // (strategy or encoding should be different with high probability)
+    }
+
+    #[test]
+    fn test_genome_crossover() {
+        let mut rng = ChaCha8Rng::seed_from_u64(42);
+        let parent1 = LLMAttackGenome::random(&mut rng);
+        let parent2 = LLMAttackGenome::random(&mut rng);
+
+        let child = parent1.crossover(&parent2, &mut rng);
+
+        // Child should inherit from one parent or the other
+        assert!(
+            child.primary_strategy == parent1.primary_strategy
+                || child.primary_strategy == parent2.primary_strategy
+        );
+    }
+
+    #[test]
+    fn test_genome_distance_same() {
+        let mut rng = ChaCha8Rng::seed_from_u64(42);
+        let genome = LLMAttackGenome::random(&mut rng);
+
+        assert!((genome.distance(&genome.clone()) - 0.0).abs() < 1e-10);
+    }
+
+    #[test]
+    fn test_genome_distance_different_strategy() {
+        let genome1 = LLMAttackGenome {
+            primary_strategy: AttackStrategy::Roleplay,
+            secondary_strategy: None,
+            encoding: Encoding::None,
+            persona: None,
+            prefix: PromptSection::default(),
+            core: PromptSection::default(),
+            suffix: PromptSection::default(),
+            target_category: HarmCategory::Violence,
+        };
+
+        let genome2 = LLMAttackGenome {
+            primary_strategy: AttackStrategy::Encoding,
+            ..genome1.clone()
+        };
+
+        assert!((genome1.distance(&genome2) - 1.0).abs() < 1e-10);
+    }
+
+    #[test]
+    fn test_genome_to_phenotype() {
+        let genome = LLMAttackGenome {
+            primary_strategy: AttackStrategy::DirectJailbreak,
+            secondary_strategy: None,
+            encoding: Encoding::None,
+            persona: None,
+            prefix: PromptSection::default(),
+            core: PromptSection {
+                content: "test".to_string(),
+            },
+            suffix: PromptSection::default(),
+            target_category: HarmCategory::Violence,
+        };
+
+        let phenotype = genome.to_phenotype();
+        assert_eq!(phenotype, genome.to_prompt());
+    }
+}
