@@ -72,8 +72,8 @@ results.export("jailbreaks.json")
 ## Architecture
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                      Red Queen Core                         │
+┌────────────────────────────────────────────────────────────┐
+│                      Red Queen Core                        │
 ├─────────────┬─────────────┬─────────────┬──────────────────┤
 │ Population  │  Selection  │  Variation  │     Archives     │
 │ Management  │  Operators  │  Operators  │   (MAP-Elites)   │
@@ -91,11 +91,11 @@ results.export("jailbreaks.json")
 
 ## Documentation
 
-- [Getting Started](docs/getting-started.md)
-- [Architecture](docs/ARCHITECTURE.md)
-- [API Design](docs/API_DESIGN.md)
-- [LLM Safety Domain](docs/llm-safety.md)
-- [Research Background](RESEARCH_NOVELTY.md)
+- [Getting Started](_dev/getting-started.md)
+- [Architecture](_dev/ARCHITECTURE.md)
+- [API Design](_dev/API_DESIGN.md)
+- [LLM Safety Domain](_dev/llm-safety.md)
+- [Research Background](_dev/RESEARCH_NOVELTY.md)
 
 ## Responsible Use
 
@@ -110,7 +110,7 @@ Red Queen is a security research tool for improving AI safety. It should be used
 - Generate harmful content for malicious purposes
 - Circumvent safety measures for harm
 
-See [SECURITY.md](SECURITY.md) for responsible disclosure guidelines.
+See [SECURITY.md](_dev/SECURITY.md) for responsible disclosure guidelines.
 
 ## Contributing
 
