@@ -15,8 +15,9 @@ use red_queen_core::evolution::{Evolution, EvolutionConfig};
 use red_queen_core::population::PopulationConfig;
 use red_queen_core::selection::Tournament;
 use red_queen_core::variation::VariationConfig;
-use red_queen_llm::fitness::JailbreakFitness;
+use red_queen_llm::fitness::{EvaluationRecord, JailbreakFitness, JudgeMode, JudgedJailbreakFitness};
 use red_queen_llm::genome::LLMAttackGenome;
+use red_queen_llm::judge::JudgeResult;
 use red_queen_llm::targets::{AnthropicTarget, GeminiTarget, LLMTarget, MockTarget, OpenAITarget};
 
 #[derive(Parser)]
@@ -87,6 +88,15 @@ enum LlmCommands {
         /// Verbose output
         #[arg(short, long)]
         verbose: bool,
+
+        /// Use LLM judge for accurate fitness evaluation.
+        /// Specify the judge model (e.g., openai:gpt-4o-mini, anthropic:claude-3-haiku-20240307)
+        #[arg(long)]
+        judge: Option<String>,
+
+        /// Store all responses for later analysis
+        #[arg(long)]
+        store_responses: bool,
     },
 }
 
@@ -119,6 +129,28 @@ fn parse_target(target_str: &str) -> Result<Arc<dyn LLMTarget>> {
     }
 }
 
+/// Serializable judge result.
+#[derive(Debug, Serialize, Deserialize)]
+struct SerializableJudgeResult {
+    score: f64,
+    refused: bool,
+    harmful_content: bool,
+    relevant: bool,
+    explanation: String,
+}
+
+impl From<&JudgeResult> for SerializableJudgeResult {
+    fn from(jr: &JudgeResult) -> Self {
+        Self {
+            score: jr.score,
+            refused: jr.refused,
+            harmful_content: jr.harmful_content,
+            relevant: jr.relevant,
+            explanation: jr.explanation.clone(),
+        }
+    }
+}
+
 /// Result entry for a single attack.
 #[derive(Debug, Serialize, Deserialize)]
 struct AttackResult {
@@ -128,6 +160,12 @@ struct AttackResult {
     fitness: f64,
     prompt: String,
     generation: usize,
+    /// Response from target (if stored).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    response: Option<String>,
+    /// Judge evaluation (if using LLM judge).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    judge_result: Option<SerializableJudgeResult>,
 }
 
 /// Full results from an evolution run.
@@ -149,7 +187,13 @@ struct RunConfig {
     seed: Option<u64>,
 }
 
-fn genome_to_result(genome: &LLMAttackGenome, fitness: f64, generation: usize) -> AttackResult {
+fn genome_to_result(
+    genome: &LLMAttackGenome,
+    fitness: f64,
+    generation: usize,
+    response: Option<String>,
+    judge_result: Option<&JudgeResult>,
+) -> AttackResult {
     AttackResult {
         strategy: format!("{:?}", genome.primary_strategy),
         encoding: format!("{:?}", genome.encoding),
@@ -157,6 +201,8 @@ fn genome_to_result(genome: &LLMAttackGenome, fitness: f64, generation: usize) -
         fitness,
         prompt: genome.to_prompt(),
         generation,
+        response,
+        judge_result: judge_result.map(SerializableJudgeResult::from),
     }
 }
 
@@ -170,6 +216,8 @@ fn run_jailbreak_evolution(
     seed: Option<u64>,
     output: &str,
     verbose: bool,
+    judge_str: Option<&str>,
+    store_responses: bool,
 ) -> Result<()> {
     println!();
     println!("  Red Queen - LLM Jailbreak Discovery");
@@ -188,10 +236,22 @@ fn run_jailbreak_evolution(
         println!("  Seed:         {}", s);
     }
     println!("  Output:       {}", output);
-    println!();
 
-    // Create fitness evaluator
-    let fitness = JailbreakFitness::new(target);
+    // Determine fitness evaluator mode
+    let use_judge = judge_str.is_some() || store_responses;
+    let judge_mode = if let Some(judge_model_str) = judge_str {
+        let judge_model = parse_target(judge_model_str)?;
+        println!("  Judge:        {} (LLM)", judge_model_str);
+        JudgeMode::LLM(judge_model)
+    } else {
+        println!("  Judge:        Heuristic (fast)");
+        JudgeMode::Heuristic
+    };
+
+    if store_responses {
+        println!("  Responses:    Stored for analysis");
+    }
+    println!();
 
     // Create selection
     let selection = Tournament::new(tournament_size);
@@ -209,10 +269,6 @@ fn run_jailbreak_evolution(
         seed,
     };
 
-    // Create evolution engine
-    let mut evolution: Evolution<LLMAttackGenome, _, _> =
-        Evolution::new(fitness, selection, config);
-
     // Set up progress bar
     let pb = ProgressBar::new(generations as u64);
     pb.set_style(
@@ -225,58 +281,122 @@ fn run_jailbreak_evolution(
     println!("  Starting evolution...");
     println!();
 
-    // Run evolution with progress updates
-    // Note: Currently runs all at once, but structured for future per-generation hooks
-    let result = evolution.run(generations);
+    // Run evolution - use judged fitness if needed
+    let (best_genome, best_fitness, top_attacks, stored_records) = if use_judge {
+        // Use JudgedJailbreakFitness for accurate evaluation with response storage
+        let fitness = JudgedJailbreakFitness::new(target.clone(), judge_mode);
+        let mut evolution: Evolution<LLMAttackGenome, _, _> =
+            Evolution::new(&fitness, selection, config);
 
-    pb.finish_with_message("complete");
+        let result = evolution.run(generations);
+        pb.finish_with_message("complete");
+
+        let best = &result.best;
+        let best_fitness_val = best.fitness.as_ref().map(|f| f.primary()).unwrap_or(0.0);
+
+        // Collect top attacks (clone to own them)
+        let top: Vec<AttackResult> = result
+            .population
+            .top_n(10)
+            .iter()
+            .map(|ind| {
+                genome_to_result(
+                    &ind.genome,
+                    ind.fitness_value(),
+                    ind.birth_generation,
+                    None,
+                    None,
+                )
+            })
+            .collect();
+
+        let records = if store_responses {
+            fitness.get_top_records(100)
+        } else {
+            vec![]
+        };
+
+        (best.genome.clone(), best_fitness_val, top, records)
+    } else {
+        // Use simple JailbreakFitness for fast heuristic evaluation
+        let fitness = JailbreakFitness::new(target.clone());
+        let mut evolution: Evolution<LLMAttackGenome, _, _> =
+            Evolution::new(fitness, selection, config);
+
+        let result = evolution.run(generations);
+        pb.finish_with_message("complete");
+
+        let best = &result.best;
+        let best_fitness_val = best.fitness.as_ref().map(|f| f.primary()).unwrap_or(0.0);
+
+        // Collect top attacks (clone to own them)
+        let top: Vec<AttackResult> = result
+            .population
+            .top_n(10)
+            .iter()
+            .map(|ind| {
+                genome_to_result(
+                    &ind.genome,
+                    ind.fitness_value(),
+                    ind.birth_generation,
+                    None,
+                    None,
+                )
+            })
+            .collect();
+
+        (best.genome.clone(), best_fitness_val, top, vec![])
+    };
     println!();
-
-    // Get results
-    let best = &result.best;
-    let best_fitness = best.fitness.as_ref().map(|f| f.primary()).unwrap_or(0.0);
 
     println!("  Results");
     println!("  -------");
     println!();
     println!("  Best fitness: {:.2}", best_fitness);
-    println!("  Strategy:     {:?}", best.genome.primary_strategy);
-    println!("  Encoding:     {:?}", best.genome.encoding);
+    println!("  Strategy:     {:?}", best_genome.primary_strategy);
+    println!("  Encoding:     {:?}", best_genome.encoding);
     println!();
 
     if verbose {
         println!("  Best prompt:");
         println!("  ---");
-        for line in best.genome.to_prompt().lines() {
+        for line in best_genome.to_prompt().lines() {
             println!("  {}", line);
         }
         println!("  ---");
         println!();
     }
 
-    // Collect top attacks
-    let top_attacks: Vec<AttackResult> = result
-        .population
-        .top_n(10)
-        .iter()
-        .enumerate()
-        .map(|(_i, ind)| {
-            genome_to_result(
-                &ind.genome,
-                ind.fitness_value(),
-                ind.birth_generation,
-            )
-        })
-        .collect();
+    // Enrich top attacks with responses if we have stored records
+    let mut top_attacks = top_attacks;
+    if !stored_records.is_empty() {
+        // Create a lookup map from prompt to record
+        let record_map: std::collections::HashMap<String, &EvaluationRecord> = stored_records
+            .iter()
+            .map(|r| (r.prompt.clone(), r))
+            .collect();
+
+        // Enrich top attacks with response data
+        for attack in &mut top_attacks {
+            if let Some(record) = record_map.get(&attack.prompt) {
+                attack.response = Some(record.response.clone());
+                attack.judge_result = record.judge_result.as_ref().map(SerializableJudgeResult::from);
+            }
+        }
+    }
 
     println!("  Top 10 attacks:");
     for (i, attack) in top_attacks.iter().enumerate() {
+        let judge_info = attack.judge_result.as_ref()
+            .map(|jr| format!(" [refused={}, harmful={}]", jr.refused, jr.harmful_content))
+            .unwrap_or_default();
         println!(
-            "    {}. {:?} / {:?} - fitness: {:.2}",
+            "    {}. {} / {} - fitness: {:.2}{}",
             i + 1,
             attack.strategy,
             attack.encoding,
-            attack.fitness
+            attack.fitness,
+            judge_info
         );
     }
     println!();
@@ -286,7 +406,7 @@ fn run_jailbreak_evolution(
         target: target_str.to_string(),
         generations,
         population_size: population,
-        best_attack: genome_to_result(&best.genome, best_fitness, best.birth_generation),
+        best_attack: genome_to_result(&best_genome, best_fitness, 0, None, None),
         top_attacks,
         config: RunConfig {
             mutation_rate,
@@ -376,6 +496,8 @@ fn main() -> Result<()> {
                 seed,
                 output,
                 verbose,
+                judge,
+                store_responses,
             } => {
                 run_jailbreak_evolution(
                     &target,
@@ -387,6 +509,8 @@ fn main() -> Result<()> {
                     seed,
                     &output,
                     verbose,
+                    judge.as_deref(),
+                    store_responses,
                 )?;
             }
         },
@@ -470,15 +594,45 @@ mod tests {
             fitness: 0.75,
             prompt: "test prompt".to_string(),
             generation: 5,
+            response: Some("I can help with that".to_string()),
+            judge_result: Some(SerializableJudgeResult {
+                score: 0.8,
+                refused: false,
+                harmful_content: true,
+                relevant: true,
+                explanation: "Test explanation".to_string(),
+            }),
         };
 
         let json = serde_json::to_string(&result).unwrap();
         assert!(json.contains("Roleplay"));
         assert!(json.contains("0.75"));
+        assert!(json.contains("I can help"));
 
         let parsed: AttackResult = serde_json::from_str(&json).unwrap();
         assert_eq!(parsed.strategy, "Roleplay");
         assert!((parsed.fitness - 0.75).abs() < 1e-10);
+        assert!(parsed.response.is_some());
+        assert!(parsed.judge_result.is_some());
+    }
+
+    #[test]
+    fn test_attack_result_without_response() {
+        let result = AttackResult {
+            strategy: "Direct".to_string(),
+            encoding: "None".to_string(),
+            secondary_strategy: None,
+            fitness: 0.5,
+            prompt: "test".to_string(),
+            generation: 1,
+            response: None,
+            judge_result: None,
+        };
+
+        let json = serde_json::to_string(&result).unwrap();
+        // Optional fields should not be present in JSON when None
+        assert!(!json.contains("response"));
+        assert!(!json.contains("judge_result"));
     }
 
     #[test]
@@ -494,6 +648,8 @@ mod tests {
                 fitness: 1.0,
                 prompt: "test".to_string(),
                 generation: 10,
+                response: None,
+                judge_result: None,
             },
             top_attacks: vec![],
             config: RunConfig {
