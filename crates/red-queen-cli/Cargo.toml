@@ -1,0 +1,24 @@
+[package]
+name = "red-queen-cli"
+description = "Command-line interface for Red Queen"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[[bin]]
+name = "red-queen"
+path = "src/main.rs"
+
+[dependencies]
+red-queen-core = { path = "../red-queen-core" }
+red-queen-llm = { path = "../red-queen-llm" }
+clap = { workspace = true }
+tokio = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+indicatif = { workspace = true }
+anyhow = { workspace = true }

@@ -1,0 +1,17 @@
+[package]
+name = "red-queen-python"
+description = "Python bindings for Red Queen"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[lib]
+name = "red_queen"
+crate-type = ["cdylib"]
+
+[dependencies]
+red-queen-core = { path = "../red-queen-core" }
+red-queen-llm = { path = "../red-queen-llm" }
+pyo3 = { workspace = true }
