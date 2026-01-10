@@ -2,6 +2,7 @@
 
 use crate::genome::{BehaviorDescriptor, Genome};
 use crate::population::Individual;
+use rand::Rng;
 use std::collections::HashMap;
 
 /// Trait for QD archives.
@@ -15,6 +16,14 @@ pub trait Archive<G: Genome>: Send + Sync {
 
     /// Get coverage statistics.
     fn coverage(&self) -> ArchiveCoverage;
+
+    /// Number of individuals in the archive.
+    fn len(&self) -> usize;
+
+    /// Check if archive is empty.
+    fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
 }
 
 /// Coverage statistics for an archive.
@@ -52,6 +61,15 @@ pub struct MapElitesArchive<G: Genome> {
     grid: HashMap<Vec<usize>, Individual<G>>,
     /// Dimension configurations.
     dimensions: Vec<BehaviorDimension>,
+}
+
+impl<G: Genome> std::fmt::Debug for MapElitesArchive<G> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("MapElitesArchive")
+            .field("cells_filled", &self.grid.len())
+            .field("dimensions", &self.dimensions)
+            .finish()
+    }
 }
 
 impl<G: Genome> MapElitesArchive<G> {
@@ -114,6 +132,54 @@ impl<G: Genome> Archive<G> for MapElitesArchive<G> {
             filled: self.grid.len(),
             total: self.total_cells(),
         }
+    }
+
+    fn len(&self) -> usize {
+        self.grid.len()
+    }
+}
+
+impl<G: Genome> MapElitesArchive<G> {
+    /// Select a random individual from the archive.
+    pub fn select_random<R: Rng>(&self, rng: &mut R) -> Option<&Individual<G>> {
+        if self.grid.is_empty() {
+            return None;
+        }
+        let idx = rng.gen_range(0..self.grid.len());
+        self.grid.values().nth(idx)
+    }
+
+    /// Get the best individual across all cells.
+    pub fn best(&self) -> Option<&Individual<G>> {
+        self.grid
+            .values()
+            .max_by(|a, b| {
+                a.fitness_value()
+                    .partial_cmp(&b.fitness_value())
+                    .unwrap_or(std::cmp::Ordering::Equal)
+            })
+    }
+
+    /// Get top N individuals across all cells.
+    pub fn top_n(&self, n: usize) -> Vec<&Individual<G>> {
+        let mut individuals: Vec<_> = self.grid.values().collect();
+        individuals.sort_by(|a, b| {
+            b.fitness_value()
+                .partial_cmp(&a.fitness_value())
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
+        individuals.truncate(n);
+        individuals
+    }
+
+    /// Get the dimension configurations.
+    pub fn dimensions(&self) -> &[BehaviorDimension] {
+        &self.dimensions
+    }
+
+    /// Get cell contents for visualization/analysis.
+    pub fn get_cell(&self, indices: &[usize]) -> Option<&Individual<G>> {
+        self.grid.get(indices)
     }
 }
 
