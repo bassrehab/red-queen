@@ -50,6 +50,39 @@ novelty(x) = average_distance(x, k_nearest_neighbors)
 
 This encourages exploration of new behavioral regions.
 
+### Using Novelty Selection
+
+```bash
+red-queen llm jailbreak \
+  --target openai:gpt-4o-mini \
+  --novelty \
+  --novelty-weight 0.5 \
+  --generations 50
+```
+
+The `--novelty-weight` parameter controls the balance:
+- `0.0` = Pure novelty (ignore fitness, maximize behavioral diversity)
+- `0.5` = Balanced (equal weight to fitness and novelty)
+- `1.0` = Pure fitness (standard evolution)
+
+### NoveltyArchive
+
+The `NoveltyArchive` tracks explored behaviors to compute novelty scores:
+
+```rust
+use red_queen_core::selection::{NoveltyArchive, NoveltySelection, NoveltyFitnessSelection};
+use std::sync::{Arc, RwLock};
+
+// Create archive
+let archive = Arc::new(RwLock::new(NoveltyArchive::new(1000, 0.1)));
+
+// Pure novelty selection
+let novelty_sel = NoveltySelection::new(15, 5, archive.clone());
+
+// Combined fitness + novelty
+let combined_sel = NoveltyFitnessSelection::new(novelty_sel, 0.5);
+```
+
 ## Benefits for Security Testing
 
 1. **Complete coverage** - Find attacks across all categories
@@ -120,7 +153,8 @@ let cell = archive.get_cell(&[2, 1, 5]);  // strategy=2, encoding=1, length_bin=
 - [x] Full MAP-Elites integration
 - [x] Multi-dimensional behavior grids (3D: strategy x encoding x length)
 - [x] CLI support (`--map-elites`, `--me-bins`, `--me-batch-size`)
-- [ ] Novelty-based selection
+- [x] Novelty-based selection (`NoveltySelection`, `NoveltyFitnessSelection`)
+- [x] CLI support (`--novelty`, `--novelty-weight`, `--novelty-k`)
 - [ ] Adaptive bin sizing
 
 ## Further Reading
