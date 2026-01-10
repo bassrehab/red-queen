@@ -14,8 +14,9 @@ use serde::{Deserialize, Serialize};
 use red_queen_core::archive::{Archive, BehaviorDimension, MapElitesArchive};
 use red_queen_core::evolution::{Evolution, EvolutionConfig, MapElitesConfig, MapElitesEvolution};
 use red_queen_core::population::PopulationConfig;
-use red_queen_core::selection::Tournament;
+use red_queen_core::selection::{NoveltyArchive, NoveltyFitnessSelection, NoveltySelection, Tournament};
 use red_queen_core::variation::VariationConfig;
+use std::sync::RwLock;
 use red_queen_llm::fitness::{EvaluationRecord, JailbreakFitness, JudgeMode, JudgedJailbreakFitness};
 use red_queen_llm::genome::LLMAttackGenome;
 use red_queen_llm::judge::JudgeResult;
@@ -111,6 +112,20 @@ enum LlmCommands {
         /// Batch size for MAP-Elites (offspring per generation, default: 50)
         #[arg(long, default_value = "50")]
         me_batch_size: usize,
+
+        /// Use novelty-based selection. Selects individuals based on behavioral uniqueness.
+        /// Can be combined with fitness using --novelty-weight.
+        #[arg(long)]
+        novelty: bool,
+
+        /// Weight for fitness vs novelty (0.0 = pure novelty, 1.0 = pure fitness).
+        /// Only used when --novelty is enabled.
+        #[arg(long, default_value = "0.5")]
+        novelty_weight: f64,
+
+        /// Number of nearest neighbors for novelty computation (default: 15)
+        #[arg(long, default_value = "15")]
+        novelty_k: usize,
     },
 }
 
@@ -330,6 +345,7 @@ fn run_map_elites_evolution(
     Ok((best_genome, best_fitness, top, records, Some(coverage_info)))
 }
 
+#[allow(clippy::too_many_arguments)]
 fn run_jailbreak_evolution(
     target_str: &str,
     generations: usize,
@@ -345,6 +361,9 @@ fn run_jailbreak_evolution(
     map_elites: bool,
     me_bins: usize,
     me_batch_size: usize,
+    novelty: bool,
+    novelty_weight: f64,
+    novelty_k: usize,
 ) -> Result<()> {
     println!();
     println!("  Red Queen - LLM Jailbreak Discovery");
@@ -382,13 +401,14 @@ fn run_jailbreak_evolution(
         println!("  Algorithm:    MAP-Elites (QD)");
         println!("  Bins:         {} per dimension", me_bins);
         println!("  Batch size:   {}", me_batch_size);
+    } else if novelty {
+        println!("  Algorithm:    Novelty Search");
+        println!("  Novelty k:    {}", novelty_k);
+        println!("  Fit weight:   {:.0}%", novelty_weight * 100.0);
     } else {
         println!("  Algorithm:    Standard Evolution");
     }
     println!();
-
-    // Create selection (only used for standard evolution)
-    let selection = Tournament::new(tournament_size);
 
     // Configure evolution
     let config = EvolutionConfig {
@@ -415,7 +435,7 @@ fn run_jailbreak_evolution(
     println!("  Starting evolution...");
     println!();
 
-    // Run evolution - choose algorithm based on map_elites flag
+    // Run evolution - choose algorithm based on flags
     let (best_genome, best_fitness, top_attacks, stored_records, coverage_info) = if map_elites {
         // MAP-Elites quality-diversity evolution
         run_map_elites_evolution(
@@ -430,8 +450,47 @@ fn run_jailbreak_evolution(
             store_responses,
             &pb,
         )?
+    } else if novelty {
+        // Novelty-based selection (combined with fitness)
+        let novelty_archive = Arc::new(RwLock::new(NoveltyArchive::new(1000, 0.1)));
+        let novelty_sel = NoveltySelection::new(novelty_k, tournament_size, novelty_archive);
+        let selection = NoveltyFitnessSelection::new(novelty_sel, novelty_weight);
+
+        let fitness = JudgedJailbreakFitness::new(target.clone(), judge_mode);
+        let mut evolution: Evolution<LLMAttackGenome, _, _> =
+            Evolution::new(&fitness, selection, config);
+
+        let result = evolution.run(generations);
+        pb.finish_with_message("complete");
+
+        let best = &result.best;
+        let best_fitness_val = best.fitness.as_ref().map(|f| f.primary()).unwrap_or(0.0);
+
+        let top: Vec<AttackResult> = result
+            .population
+            .top_n(10)
+            .iter()
+            .map(|ind| {
+                genome_to_result(
+                    &ind.genome,
+                    ind.fitness_value(),
+                    ind.birth_generation,
+                    None,
+                    None,
+                )
+            })
+            .collect();
+
+        let records = if store_responses {
+            fitness.get_top_records(100)
+        } else {
+            vec![]
+        };
+
+        (best.genome.clone(), best_fitness_val, top, records, None)
     } else if use_judge {
         // Standard evolution with judged fitness
+        let selection = Tournament::new(tournament_size);
         let fitness = JudgedJailbreakFitness::new(target.clone(), judge_mode);
         let mut evolution: Evolution<LLMAttackGenome, _, _> =
             Evolution::new(&fitness, selection, config);
@@ -466,6 +525,7 @@ fn run_jailbreak_evolution(
         (best.genome.clone(), best_fitness_val, top, records, None)
     } else {
         // Standard evolution with simple heuristic fitness
+        let selection = Tournament::new(tournament_size);
         let fitness = JailbreakFitness::new(target.clone());
         let mut evolution: Evolution<LLMAttackGenome, _, _> =
             Evolution::new(fitness, selection, config);
@@ -657,6 +717,9 @@ fn main() -> Result<()> {
                 map_elites,
                 me_bins,
                 me_batch_size,
+                novelty,
+                novelty_weight,
+                novelty_k,
             } => {
                 run_jailbreak_evolution(
                     &target,
@@ -673,6 +736,9 @@ fn main() -> Result<()> {
                     map_elites,
                     me_bins,
                     me_batch_size,
+                    novelty,
+                    novelty_weight,
+                    novelty_k,
                 )?;
             }
         },
