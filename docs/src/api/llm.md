@@ -103,6 +103,7 @@ use red_queen_llm::targets::{
     OpenAITarget,
     AnthropicTarget,
     GeminiTarget,
+    OllamaTarget,
     MockTarget,
 };
 ```
@@ -147,6 +148,18 @@ pub struct GeminiTarget { /* ... */ }
 impl GeminiTarget {
     pub fn new(api_key: &str, model: &str) -> Self;
     pub fn from_env(model: &str) -> Result<Self, TargetError>;
+}
+```
+
+#### `OllamaTarget`
+
+```rust
+pub struct OllamaTarget { /* ... */ }
+
+impl OllamaTarget {
+    pub fn new(model: &str) -> Self;            // Uses default localhost:11434
+    pub fn with_url(model: &str, base_url: &str) -> Self;
+    pub fn from_env(model: &str) -> Self;       // Uses OLLAMA_HOST if set
 }
 ```
 

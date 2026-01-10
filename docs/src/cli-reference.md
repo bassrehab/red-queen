@@ -66,6 +66,8 @@ openai:gpt-4              # OpenAI GPT-4
 openai:gpt-4o-mini        # OpenAI GPT-4o Mini
 anthropic:claude-sonnet-4-20250514  # Anthropic Claude
 gemini:gemini-2.0-flash   # Google Gemini
+ollama:llama3.2           # Local Ollama model
+ollama:mistral            # Any Ollama model
 mock:refuse               # Mock target (always refuses)
 mock:comply               # Mock target (always complies)
 ```
@@ -172,6 +174,17 @@ red-queen llm jailbreak \
   --novelty-k 10 \
   --generations 100
 ```
+
+### Local Testing with Ollama
+
+```bash
+red-queen llm jailbreak \
+  --target ollama:llama3.2 \
+  --generations 50 \
+  --population 30
+```
+
+Ollama provides free local LLM testing. Install from [ollama.ai](https://ollama.ai), then pull a model with `ollama pull llama3.2`. Set `OLLAMA_HOST` environment variable to use a non-default host.
 
 ## Output Format
 
