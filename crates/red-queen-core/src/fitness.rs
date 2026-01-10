@@ -77,6 +77,21 @@ pub trait Fitness<G: Genome>: Send + Sync {
     }
 }
 
+/// Blanket implementation for references.
+impl<G: Genome, F: Fitness<G> + ?Sized> Fitness<G> for &F {
+    fn evaluate(&self, genome: &G) -> FitnessResult {
+        (*self).evaluate(genome)
+    }
+
+    fn evaluate_batch(&self, genomes: &[G]) -> Vec<FitnessResult> {
+        (*self).evaluate_batch(genomes)
+    }
+
+    fn maximizing(&self) -> bool {
+        (*self).maximizing()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
