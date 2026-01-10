@@ -36,6 +36,14 @@ red-queen llm jailbreak [OPTIONS] --target <TARGET>
 | `--judge <TARGET>` | Use an LLM as judge for accurate evaluation |
 | `--store-responses` | Store all responses for later analysis |
 
+**MAP-Elites (Quality-Diversity) Options:**
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `--map-elites` | false | Enable MAP-Elites quality-diversity algorithm |
+| `--me-bins <N>` | 10 | Number of bins per behavior dimension |
+| `--me-batch-size <N>` | 50 | Offspring generated per generation |
+
 **Output Options:**
 
 | Option | Default | Description |
@@ -108,6 +116,30 @@ red-queen llm jailbreak \
   --crossover-rate 0.5 \
   --tournament-size 2 \
   --generations 200
+```
+
+### MAP-Elites (Quality-Diversity)
+
+```bash
+red-queen llm jailbreak \
+  --target openai:gpt-4o-mini \
+  --map-elites \
+  --generations 50 \
+  --me-bins 5 \
+  --me-batch-size 20
+```
+
+MAP-Elites maintains diversity across behavior dimensions (strategy, encoding, prompt length), discovering multiple distinct attack vectors rather than converging to a single approach.
+
+### MAP-Elites with LLM Judge
+
+```bash
+red-queen llm jailbreak \
+  --target anthropic:claude-sonnet-4-20250514 \
+  --map-elites \
+  --judge openai:gpt-4o-mini \
+  --generations 30 \
+  --store-responses
 ```
 
 ## Output Format
