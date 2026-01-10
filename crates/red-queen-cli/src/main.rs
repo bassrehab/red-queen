@@ -377,10 +377,13 @@ fn run_jailbreak_evolution(
             .collect();
 
         // Enrich top attacks with response data
+        // Use the record's fitness to ensure consistency with judge_result
         for attack in &mut top_attacks {
             if let Some(record) = record_map.get(&attack.prompt) {
                 attack.response = Some(record.response.clone());
                 attack.judge_result = record.judge_result.as_ref().map(SerializableJudgeResult::from);
+                // Use record's fitness for consistency with judge_result
+                attack.fitness = record.fitness;
             }
         }
     }
