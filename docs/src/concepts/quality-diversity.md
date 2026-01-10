@@ -61,34 +61,67 @@ This encourages exploration of new behavioral regions.
 
 Currently tracked behaviors:
 
-| Dimension | Values | Description |
-|-----------|--------|-------------|
-| Strategy | 0.0-1.0 | Attack approach type |
-| Encoding | 0.0-1.0 | Obfuscation method |
-| Length | continuous | Prompt character count |
+| Dimension | Range | Description |
+|-----------|-------|-------------|
+| Strategy | 0-5 | Attack approach (Roleplay, Encoding, Authority, Hypothetical, MultiTurn, DirectJailbreak) |
+| Encoding | 0-5 | Obfuscation method (None, Base64, ROT13, Leetspeak, PigLatin, Unicode) |
+| Prompt Length | 0-2000 | Character count of generated prompt |
+
+## Using MAP-Elites
+
+### CLI Usage
+
+```bash
+red-queen llm jailbreak \
+  --target openai:gpt-4o-mini \
+  --map-elites \
+  --me-bins 5 \
+  --generations 50
+```
+
+### Output
+
+```
+Coverage:     18/125 cells (14.4%)
+
+Top 10 attacks:
+  1. Encoding / Unicode - fitness: 0.85
+  2. Roleplay / Base64 - fitness: 0.82
+  3. Authority / None - fitness: 0.80
+  ...
+```
 
 ## Archive Analysis
 
 After evolution, analyze the archive:
 
 ```rust
-// Get solutions by behavior region
-archive.get_region(strategy: Roleplay, encoding: Base64)
+// Get the best individual across all cells
+let best = archive.best();
 
-// Find most novel solutions
-archive.most_novel(k: 10)
+// Get top N individuals by fitness
+let top_10 = archive.top_n(10);
 
 // Coverage statistics
-archive.coverage()  // % of cells filled
+let coverage = archive.coverage();
+println!("Filled: {}/{} ({:.1}%)",
+    coverage.filled,
+    coverage.total,
+    coverage.percentage() * 100.0);
+
+// Access specific cell
+let cell = archive.get_cell(&[2, 1, 5]);  // strategy=2, encoding=1, length_bin=5
 ```
 
 ## Implementation Status
 
 - [x] Behavior characterization
 - [x] Basic archive structure
-- [ ] Full MAP-Elites integration
+- [x] Full MAP-Elites integration
+- [x] Multi-dimensional behavior grids (3D: strategy x encoding x length)
+- [x] CLI support (`--map-elites`, `--me-bins`, `--me-batch-size`)
 - [ ] Novelty-based selection
-- [ ] Multi-dimensional behavior grids
+- [ ] Adaptive bin sizing
 
 ## Further Reading
 
