@@ -11,7 +11,8 @@ use clap::{Parser, Subcommand};
 use indicatif::{ProgressBar, ProgressStyle};
 use serde::{Deserialize, Serialize};
 
-use red_queen_core::evolution::{Evolution, EvolutionConfig};
+use red_queen_core::archive::{Archive, BehaviorDimension, MapElitesArchive};
+use red_queen_core::evolution::{Evolution, EvolutionConfig, MapElitesConfig, MapElitesEvolution};
 use red_queen_core::population::PopulationConfig;
 use red_queen_core::selection::Tournament;
 use red_queen_core::variation::VariationConfig;
@@ -97,6 +98,19 @@ enum LlmCommands {
         /// Store all responses for later analysis
         #[arg(long)]
         store_responses: bool,
+
+        /// Use MAP-Elites quality-diversity algorithm instead of standard evolution.
+        /// This maintains diversity across behavior dimensions (strategy, encoding, prompt length).
+        #[arg(long)]
+        map_elites: bool,
+
+        /// Number of bins per behavior dimension for MAP-Elites (default: 10)
+        #[arg(long, default_value = "10")]
+        me_bins: usize,
+
+        /// Batch size for MAP-Elites (offspring per generation, default: 50)
+        #[arg(long, default_value = "50")]
+        me_batch_size: usize,
     },
 }
 
@@ -206,6 +220,116 @@ fn genome_to_result(
     }
 }
 
+/// Coverage info for MAP-Elites results.
+struct CoverageInfo {
+    filled: usize,
+    total: usize,
+    percentage: f64,
+}
+
+/// Run MAP-Elites quality-diversity evolution.
+#[allow(clippy::too_many_arguments)]
+fn run_map_elites_evolution(
+    target: Arc<dyn LLMTarget>,
+    judge_mode: JudgeMode,
+    generations: usize,
+    bins: usize,
+    batch_size: usize,
+    mutation_rate: f64,
+    crossover_rate: f64,
+    seed: Option<u64>,
+    store_responses: bool,
+    pb: &ProgressBar,
+) -> Result<(LLMAttackGenome, f64, Vec<AttackResult>, Vec<EvaluationRecord>, Option<CoverageInfo>)> {
+    // Create behavior dimensions for LLM attacks:
+    // Dim 0: Strategy (0-5, 6 variants)
+    // Dim 1: Encoding (0-5, 6 variants)
+    // Dim 2: Prompt length (0-2000 chars, normalized)
+    let dimensions = vec![
+        BehaviorDimension {
+            name: "strategy".to_string(),
+            min: 0.0,
+            max: 6.0,
+            bins,
+        },
+        BehaviorDimension {
+            name: "encoding".to_string(),
+            min: 0.0,
+            max: 6.0,
+            bins,
+        },
+        BehaviorDimension {
+            name: "prompt_length".to_string(),
+            min: 0.0,
+            max: 2000.0,
+            bins,
+        },
+    ];
+
+    let archive = MapElitesArchive::new(dimensions);
+
+    // Use JudgedJailbreakFitness for MAP-Elites (always stores responses for diversity analysis)
+    let fitness = JudgedJailbreakFitness::new(target, judge_mode);
+
+    let config = MapElitesConfig {
+        batch_size,
+        variation: VariationConfig {
+            mutation_rate,
+            crossover_rate,
+        },
+        seed,
+        initial_population: batch_size,
+    };
+
+    let mut evolution = MapElitesEvolution::new(archive, &fitness, config);
+
+    // Run evolution with progress updates
+    for _ in 0..generations {
+        evolution.step();
+        pb.inc(1);
+    }
+    pb.finish_with_message("complete");
+
+    // Get results from archive
+    let archive = evolution.archive();
+    let coverage = archive.coverage();
+
+    let best = archive.best().cloned().ok_or_else(|| {
+        anyhow!("MAP-Elites archive is empty after evolution")
+    })?;
+    let best_genome = best.genome.clone();
+    let best_fitness = best.fitness_value();
+
+    // Get diverse top attacks from archive
+    let top: Vec<AttackResult> = archive
+        .top_n(10)
+        .iter()
+        .map(|ind| {
+            genome_to_result(
+                &ind.genome,
+                ind.fitness_value(),
+                ind.birth_generation,
+                None,
+                None,
+            )
+        })
+        .collect();
+
+    let records = if store_responses {
+        fitness.get_top_records(100)
+    } else {
+        vec![]
+    };
+
+    let coverage_info = CoverageInfo {
+        filled: coverage.filled,
+        total: coverage.total,
+        percentage: coverage.percentage() * 100.0,
+    };
+
+    Ok((best_genome, best_fitness, top, records, Some(coverage_info)))
+}
+
 fn run_jailbreak_evolution(
     target_str: &str,
     generations: usize,
@@ -218,6 +342,9 @@ fn run_jailbreak_evolution(
     verbose: bool,
     judge_str: Option<&str>,
     store_responses: bool,
+    map_elites: bool,
+    me_bins: usize,
+    me_batch_size: usize,
 ) -> Result<()> {
     println!();
     println!("  Red Queen - LLM Jailbreak Discovery");
@@ -251,9 +378,16 @@ fn run_jailbreak_evolution(
     if store_responses {
         println!("  Responses:    Stored for analysis");
     }
+    if map_elites {
+        println!("  Algorithm:    MAP-Elites (QD)");
+        println!("  Bins:         {} per dimension", me_bins);
+        println!("  Batch size:   {}", me_batch_size);
+    } else {
+        println!("  Algorithm:    Standard Evolution");
+    }
     println!();
 
-    // Create selection
+    // Create selection (only used for standard evolution)
     let selection = Tournament::new(tournament_size);
 
     // Configure evolution
@@ -281,9 +415,23 @@ fn run_jailbreak_evolution(
     println!("  Starting evolution...");
     println!();
 
-    // Run evolution - use judged fitness if needed
-    let (best_genome, best_fitness, top_attacks, stored_records) = if use_judge {
-        // Use JudgedJailbreakFitness for accurate evaluation with response storage
+    // Run evolution - choose algorithm based on map_elites flag
+    let (best_genome, best_fitness, top_attacks, stored_records, coverage_info) = if map_elites {
+        // MAP-Elites quality-diversity evolution
+        run_map_elites_evolution(
+            target.clone(),
+            judge_mode,
+            generations,
+            me_bins,
+            me_batch_size,
+            mutation_rate,
+            crossover_rate,
+            seed,
+            store_responses,
+            &pb,
+        )?
+    } else if use_judge {
+        // Standard evolution with judged fitness
         let fitness = JudgedJailbreakFitness::new(target.clone(), judge_mode);
         let mut evolution: Evolution<LLMAttackGenome, _, _> =
             Evolution::new(&fitness, selection, config);
@@ -294,7 +442,6 @@ fn run_jailbreak_evolution(
         let best = &result.best;
         let best_fitness_val = best.fitness.as_ref().map(|f| f.primary()).unwrap_or(0.0);
 
-        // Collect top attacks (clone to own them)
         let top: Vec<AttackResult> = result
             .population
             .top_n(10)
@@ -316,9 +463,9 @@ fn run_jailbreak_evolution(
             vec![]
         };
 
-        (best.genome.clone(), best_fitness_val, top, records)
+        (best.genome.clone(), best_fitness_val, top, records, None)
     } else {
-        // Use simple JailbreakFitness for fast heuristic evaluation
+        // Standard evolution with simple heuristic fitness
         let fitness = JailbreakFitness::new(target.clone());
         let mut evolution: Evolution<LLMAttackGenome, _, _> =
             Evolution::new(fitness, selection, config);
@@ -329,7 +476,6 @@ fn run_jailbreak_evolution(
         let best = &result.best;
         let best_fitness_val = best.fitness.as_ref().map(|f| f.primary()).unwrap_or(0.0);
 
-        // Collect top attacks (clone to own them)
         let top: Vec<AttackResult> = result
             .population
             .top_n(10)
@@ -345,13 +491,20 @@ fn run_jailbreak_evolution(
             })
             .collect();
 
-        (best.genome.clone(), best_fitness_val, top, vec![])
+        (best.genome.clone(), best_fitness_val, top, vec![], None)
     };
     println!();
 
     println!("  Results");
     println!("  -------");
     println!();
+
+    // Show coverage info for MAP-Elites
+    if let Some(cov) = &coverage_info {
+        println!("  Coverage:     {}/{} cells ({:.1}%)", cov.filled, cov.total, cov.percentage);
+        println!();
+    }
+
     println!("  Best fitness: {:.2}", best_fitness);
     println!("  Strategy:     {:?}", best_genome.primary_strategy);
     println!("  Encoding:     {:?}", best_genome.encoding);
@@ -501,6 +654,9 @@ fn main() -> Result<()> {
                 verbose,
                 judge,
                 store_responses,
+                map_elites,
+                me_bins,
+                me_batch_size,
             } => {
                 run_jailbreak_evolution(
                     &target,
@@ -514,6 +670,9 @@ fn main() -> Result<()> {
                     verbose,
                     judge.as_deref(),
                     store_responses,
+                    map_elites,
+                    me_bins,
+                    me_batch_size,
                 )?;
             }
         },
