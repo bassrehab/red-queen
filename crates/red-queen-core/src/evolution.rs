@@ -121,21 +121,46 @@ where
     }
 
     fn evaluate_population(&mut self) {
-        for ind in &mut self.population.individuals {
-            if ind.fitness.is_none() {
-                let result = self.fitness.evaluate(&ind.genome);
-                ind.fitness = Some(result.value);
-                ind.behavior = result.behavior;
-            }
+        // Collect unevaluated individuals
+        let unevaluated: Vec<_> = self
+            .population
+            .individuals
+            .iter()
+            .enumerate()
+            .filter(|(_, ind)| ind.fitness.is_none())
+            .map(|(i, ind)| (i, ind.genome.clone()))
+            .collect();
+
+        if unevaluated.is_empty() {
+            return;
+        }
+
+        // Batch evaluate
+        let genomes: Vec<_> = unevaluated.iter().map(|(_, g)| g.clone()).collect();
+        let results = self.fitness.evaluate_batch(&genomes);
+
+        // Apply results
+        for ((idx, _), result) in unevaluated.into_iter().zip(results) {
+            self.population.individuals[idx].fitness = Some(result.value);
+            self.population.individuals[idx].behavior = result.behavior;
         }
     }
 
     fn evaluate_batch(&self, mut individuals: Vec<Individual<G>>) -> Vec<Individual<G>> {
-        for ind in &mut individuals {
-            let result = self.fitness.evaluate(&ind.genome);
+        if individuals.is_empty() {
+            return individuals;
+        }
+
+        // Batch evaluate all genomes
+        let genomes: Vec<_> = individuals.iter().map(|ind| ind.genome.clone()).collect();
+        let results = self.fitness.evaluate_batch(&genomes);
+
+        // Apply results
+        for (ind, result) in individuals.iter_mut().zip(results) {
             ind.fitness = Some(result.value);
             ind.behavior = result.behavior;
         }
+
         individuals
     }
 
@@ -265,14 +290,19 @@ where
 
     /// Seed the archive with random individuals.
     pub fn initialize(&mut self) {
-        for _ in 0..self.config.initial_population {
-            let genome = G::random(&mut self.rng);
-            let mut individual = Individual::new(genome);
+        // Generate all random genomes
+        let genomes: Vec<G> = (0..self.config.initial_population)
+            .map(|_| G::random(&mut self.rng))
+            .collect();
 
-            let result = self.fitness.evaluate(&individual.genome);
+        // Batch evaluate
+        let results = self.fitness.evaluate_batch(&genomes);
+
+        // Add to archive
+        for (genome, result) in genomes.into_iter().zip(results) {
+            let mut individual = Individual::new(genome);
             individual.fitness = Some(result.value);
             individual.behavior = result.behavior;
-
             self.archive.add(individual);
             self.total_evaluations += 1;
         }
@@ -305,11 +335,14 @@ where
     pub fn step(&mut self) {
         let offspring = self.create_offspring();
 
-        for mut ind in offspring {
-            let result = self.fitness.evaluate(&ind.genome);
+        // Batch evaluate all offspring
+        let genomes: Vec<_> = offspring.iter().map(|ind| ind.genome.clone()).collect();
+        let results = self.fitness.evaluate_batch(&genomes);
+
+        // Add evaluated individuals to archive
+        for (mut ind, result) in offspring.into_iter().zip(results) {
             ind.fitness = Some(result.value);
             ind.behavior = result.behavior;
-
             self.archive.add(ind);
             self.total_evaluations += 1;
         }

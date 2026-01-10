@@ -127,6 +127,11 @@ enum LlmCommands {
         /// Number of nearest neighbors for novelty computation (default: 15)
         #[arg(long, default_value = "15")]
         novelty_k: usize,
+
+        /// Maximum concurrent API calls for parallel evaluation (default: 10).
+        /// Higher values speed up evolution but may hit API rate limits.
+        #[arg(long, default_value = "10")]
+        concurrency: usize,
     },
 }
 
@@ -259,6 +264,7 @@ fn run_map_elites_evolution(
     crossover_rate: f64,
     seed: Option<u64>,
     store_responses: bool,
+    concurrency: usize,
     pb: &ProgressBar,
 ) -> Result<(LLMAttackGenome, f64, Vec<AttackResult>, Vec<EvaluationRecord>, Option<CoverageInfo>)> {
     // Create behavior dimensions for LLM attacks:
@@ -289,7 +295,8 @@ fn run_map_elites_evolution(
     let archive = MapElitesArchive::new(dimensions);
 
     // Use JudgedJailbreakFitness for MAP-Elites (always stores responses for diversity analysis)
-    let fitness = JudgedJailbreakFitness::new(target, judge_mode);
+    let fitness = JudgedJailbreakFitness::new(target, judge_mode)
+        .with_concurrency(concurrency);
 
     let config = MapElitesConfig {
         batch_size,
@@ -369,6 +376,7 @@ fn run_jailbreak_evolution(
     novelty: bool,
     novelty_weight: f64,
     novelty_k: usize,
+    concurrency: usize,
 ) -> Result<()> {
     println!();
     println!("  Red Queen - LLM Jailbreak Discovery");
@@ -402,6 +410,7 @@ fn run_jailbreak_evolution(
     if store_responses {
         println!("  Responses:    Stored for analysis");
     }
+    println!("  Concurrency:  {} parallel evaluations", concurrency);
     if map_elites {
         println!("  Algorithm:    MAP-Elites (QD)");
         println!("  Bins:         {} per dimension", me_bins);
@@ -453,6 +462,7 @@ fn run_jailbreak_evolution(
             crossover_rate,
             seed,
             store_responses,
+            concurrency,
             &pb,
         )?
     } else if novelty {
@@ -461,7 +471,8 @@ fn run_jailbreak_evolution(
         let novelty_sel = NoveltySelection::new(novelty_k, tournament_size, novelty_archive);
         let selection = NoveltyFitnessSelection::new(novelty_sel, novelty_weight);
 
-        let fitness = JudgedJailbreakFitness::new(target.clone(), judge_mode);
+        let fitness = JudgedJailbreakFitness::new(target.clone(), judge_mode)
+            .with_concurrency(concurrency);
         let mut evolution: Evolution<LLMAttackGenome, _, _> =
             Evolution::new(&fitness, selection, config);
 
@@ -496,7 +507,8 @@ fn run_jailbreak_evolution(
     } else if use_judge {
         // Standard evolution with judged fitness
         let selection = Tournament::new(tournament_size);
-        let fitness = JudgedJailbreakFitness::new(target.clone(), judge_mode);
+        let fitness = JudgedJailbreakFitness::new(target.clone(), judge_mode)
+            .with_concurrency(concurrency);
         let mut evolution: Evolution<LLMAttackGenome, _, _> =
             Evolution::new(&fitness, selection, config);
 
@@ -531,7 +543,8 @@ fn run_jailbreak_evolution(
     } else {
         // Standard evolution with simple heuristic fitness
         let selection = Tournament::new(tournament_size);
-        let fitness = JailbreakFitness::new(target.clone());
+        let fitness = JailbreakFitness::new(target.clone())
+            .with_concurrency(concurrency);
         let mut evolution: Evolution<LLMAttackGenome, _, _> =
             Evolution::new(fitness, selection, config);
 
@@ -725,6 +738,7 @@ fn main() -> Result<()> {
                 novelty,
                 novelty_weight,
                 novelty_k,
+                concurrency,
             } => {
                 run_jailbreak_evolution(
                     &target,
@@ -744,6 +758,7 @@ fn main() -> Result<()> {
                     novelty,
                     novelty_weight,
                     novelty_k,
+                    concurrency,
                 )?;
             }
         },
