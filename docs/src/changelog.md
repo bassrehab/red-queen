@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- MAP-Elites quality-diversity evolution
+  - `MapElitesEvolution` engine for diverse solution discovery
+  - `MapElitesArchive` with `best()`, `top_n()`, `select_random()`, `get_cell()`
+  - `MapElitesConfig` and `MapElitesResult` types
+  - `BehaviorDimension` for configuring archive grid
+  - `ArchiveCoverage` statistics
+  - `--map-elites` CLI flag to enable quality-diversity mode
+  - `--me-bins` to configure bins per dimension
+  - `--me-batch-size` for offspring per generation
+  - Coverage statistics displayed in results
 - LLM Judge system for accurate attack success evaluation
   - `LLMJudge` - Uses an LLM to evaluate responses
   - `HeuristicJudge` - Fast keyword-based fallback
@@ -24,6 +34,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - `AttackResult` now includes optional `response` and `judge_result` fields
 - CLI output shows judge evaluation details for top attacks
+- `Archive` trait now includes `len()` and `is_empty()` methods
 
 ## [0.1.0] - 2025-12-27
 
