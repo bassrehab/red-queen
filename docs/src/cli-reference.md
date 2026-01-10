@@ -52,6 +52,12 @@ red-queen llm jailbreak [OPTIONS] --target <TARGET>
 | `--novelty-weight <WEIGHT>` | 0.5 | Fitness vs novelty weight (0.0 = pure novelty, 1.0 = pure fitness) |
 | `--novelty-k <N>` | 15 | Number of nearest neighbors for novelty computation |
 
+**Performance Options:**
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `--concurrency <N>` | 10 | Maximum concurrent API calls for parallel evaluation |
+
 **Output Options:**
 
 | Option | Default | Description |

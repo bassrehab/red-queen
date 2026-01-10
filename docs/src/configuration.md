@@ -133,6 +133,35 @@ red-queen llm jailbreak \
   --population 50
 ```
 
+## Parallel Evaluation
+
+Red Queen evaluates fitness in parallel to speed up evolution.
+
+```bash
+--concurrency 10   # Default
+```
+
+| Concurrency | Use Case |
+|-------------|----------|
+| 1 | Sequential (debugging, strict rate limits) |
+| 5-10 | Standard cloud API usage |
+| 20+ | High-throughput APIs with generous rate limits |
+
+**Notes:**
+- Cloud APIs (OpenAI, Anthropic, Gemini): Significant speedup with higher concurrency
+- Local Ollama: Minimal speedup (model processes requests sequentially)
+- Adjust based on API rate limits to avoid 429 errors
+
+### High-Throughput Example
+
+```bash
+red-queen llm jailbreak \
+  --target openai:gpt-4o-mini \
+  --concurrency 20 \
+  --generations 50 \
+  --population 50
+```
+
 ## Cost Estimation
 
 API costs scale with:

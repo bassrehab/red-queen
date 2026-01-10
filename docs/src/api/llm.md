@@ -264,19 +264,20 @@ use red_queen_llm::fitness::{
 
 #### `JailbreakFitness`
 
-Simple heuristic-based fitness:
+Simple heuristic-based fitness with parallel evaluation:
 
 ```rust
 pub struct JailbreakFitness { /* ... */ }
 
 impl JailbreakFitness {
     pub fn new(target: Arc<dyn LLMTarget>) -> Self;
+    pub fn with_concurrency(self, concurrency: usize) -> Self;
 }
 ```
 
 #### `JudgedJailbreakFitness`
 
-Full-featured fitness with judge and response storage:
+Full-featured fitness with judge, response storage, and parallel evaluation:
 
 ```rust
 pub struct JudgedJailbreakFitness { /* ... */ }
@@ -284,11 +285,15 @@ pub struct JudgedJailbreakFitness { /* ... */ }
 impl JudgedJailbreakFitness {
     pub fn new(target: Arc<dyn LLMTarget>, judge_mode: JudgeMode) -> Self;
     pub fn with_judge(target: Arc<dyn LLMTarget>, judge: Arc<dyn Judge>) -> Self;
+    pub fn with_concurrency(self, concurrency: usize) -> Self;
+    pub fn concurrency(&self) -> usize;
     pub fn get_records(&self) -> Vec<EvaluationRecord>;
     pub fn get_top_records(&self, n: usize) -> Vec<EvaluationRecord>;
     pub fn clear_records(&self);
 }
 ```
+
+Both fitness evaluators support parallel batch evaluation via the `Fitness::evaluate_batch` trait method. Set concurrency based on API rate limits (default: 10).
 
 #### `JudgeMode`
 

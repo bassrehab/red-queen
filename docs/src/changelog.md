@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Parallel batch evaluation for faster fitness computation
+  - `evaluate_batch` with configurable concurrency in fitness evaluators
+  - `--concurrency` CLI flag (default: 10)
+  - Significant speedup for cloud APIs (OpenAI, Anthropic, Gemini)
+  - Evolution engines updated to use batch evaluation
 - Ollama target adapter for local LLM testing
   - `OllamaTarget` for connecting to local Ollama instance
   - Default URL `http://localhost:11434`
