@@ -19,5 +19,5 @@ pub mod prelude {
     pub use crate::genome::{LLMAttackGenome, AttackStrategy, HarmCategory};
     pub use crate::fitness::{JailbreakFitness, JudgedJailbreakFitness};
     pub use crate::judge::{Judge, JudgeResult, LLMJudge, HeuristicJudge};
-    pub use crate::targets::{LLMTarget, OpenAITarget, AnthropicTarget, GeminiTarget};
+    pub use crate::targets::{LLMTarget, OpenAITarget, AnthropicTarget, GeminiTarget, OllamaTarget};
 }

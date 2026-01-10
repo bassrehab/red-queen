@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Ollama target adapter for local LLM testing
+  - `OllamaTarget` for connecting to local Ollama instance
+  - Default URL `http://localhost:11434`
+  - `OLLAMA_HOST` environment variable support for custom hosts
+  - `ollama:model` CLI target format
 - Novelty-based selection for behavioral diversity
   - `NoveltyArchive` for tracking explored behaviors
   - `NoveltySelection` for pure novelty-based parent selection
