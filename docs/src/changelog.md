@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Novelty-based selection for behavioral diversity
+  - `NoveltyArchive` for tracking explored behaviors
+  - `NoveltySelection` for pure novelty-based parent selection
+  - `NoveltyFitnessSelection` for combined fitness + novelty selection
+  - `--novelty` CLI flag to enable novelty selection
+  - `--novelty-weight` to balance fitness vs novelty (0.0-1.0)
+  - `--novelty-k` for k-nearest neighbors computation
 - MAP-Elites quality-diversity evolution
   - `MapElitesEvolution` engine for diverse solution discovery
   - `MapElitesArchive` with `best()`, `top_n()`, `select_random()`, `get_cell()`

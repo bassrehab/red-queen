@@ -44,6 +44,14 @@ red-queen llm jailbreak [OPTIONS] --target <TARGET>
 | `--me-bins <N>` | 10 | Number of bins per behavior dimension |
 | `--me-batch-size <N>` | 50 | Offspring generated per generation |
 
+**Novelty Selection Options:**
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `--novelty` | false | Enable novelty-based selection |
+| `--novelty-weight <WEIGHT>` | 0.5 | Fitness vs novelty weight (0.0 = pure novelty, 1.0 = pure fitness) |
+| `--novelty-k <N>` | 15 | Number of nearest neighbors for novelty computation |
+
 **Output Options:**
 
 | Option | Default | Description |
@@ -140,6 +148,29 @@ red-queen llm jailbreak \
   --judge openai:gpt-4o-mini \
   --generations 30 \
   --store-responses
+```
+
+### Novelty Selection
+
+```bash
+red-queen llm jailbreak \
+  --target openai:gpt-4o-mini \
+  --novelty \
+  --novelty-weight 0.3 \
+  --generations 50
+```
+
+Novelty selection rewards behavioral uniqueness, encouraging exploration of diverse attack strategies. The `--novelty-weight` parameter balances fitness (success rate) with novelty (behavioral uniqueness).
+
+### Pure Novelty Search
+
+```bash
+red-queen llm jailbreak \
+  --target gemini:gemini-2.0-flash \
+  --novelty \
+  --novelty-weight 0.0 \
+  --novelty-k 10 \
+  --generations 100
 ```
 
 ## Output Format
