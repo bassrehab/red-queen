@@ -37,6 +37,7 @@ pub mod prelude {
     pub use crate::fitness::{Fitness, FitnessValue};
     pub use crate::population::{Population, Individual};
     pub use crate::selection::Selection;
-    pub use crate::evolution::Evolution;
+    pub use crate::evolution::{Evolution, MapElitesEvolution, MapElitesConfig, MapElitesResult};
+    pub use crate::archive::{Archive, MapElitesArchive, BehaviorDimension, ArchiveCoverage};
     pub use crate::error::{Error, Result};
 }
