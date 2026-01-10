@@ -245,6 +245,83 @@ impl LLMTarget for GeminiTarget {
     }
 }
 
+/// Ollama local target.
+/// Connects to a local Ollama instance at http://localhost:11434
+pub struct OllamaTarget {
+    client: reqwest::Client,
+    model: String,
+    base_url: String,
+}
+
+impl OllamaTarget {
+    /// Create a new Ollama target with default URL.
+    pub fn new(model: &str) -> Self {
+        Self::with_url(model, "http://localhost:11434")
+    }
+
+    /// Create with custom URL.
+    pub fn with_url(model: &str, base_url: &str) -> Self {
+        Self {
+            client: reqwest::Client::new(),
+            model: model.to_string(),
+            base_url: base_url.trim_end_matches('/').to_string(),
+        }
+    }
+
+    /// Create from environment variable OLLAMA_HOST (optional).
+    pub fn from_env(model: &str) -> Self {
+        let base_url = std::env::var("OLLAMA_HOST")
+            .unwrap_or_else(|_| "http://localhost:11434".to_string());
+        Self::with_url(model, &base_url)
+    }
+}
+
+#[async_trait]
+impl LLMTarget for OllamaTarget {
+    async fn query(&self, prompt: &str) -> Result<String, TargetError> {
+        let url = format!("{}/api/chat", self.base_url);
+
+        let response = self
+            .client
+            .post(&url)
+            .json(&serde_json::json!({
+                "model": self.model,
+                "messages": [
+                    {"role": "user", "content": prompt}
+                ],
+                "stream": false
+            }))
+            .send()
+            .await?;
+
+        if response.status() == 429 {
+            return Err(TargetError::RateLimit);
+        }
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let body = response.text().await.unwrap_or_default();
+            return Err(TargetError::Api(format!(
+                "Ollama API error {}: {}",
+                status, body
+            )));
+        }
+
+        let body: serde_json::Value = response.json().await?;
+
+        let content = body["message"]["content"]
+            .as_str()
+            .unwrap_or("")
+            .to_string();
+
+        Ok(content)
+    }
+
+    fn name(&self) -> &str {
+        &self.model
+    }
+}
+
 /// Mock target for testing.
 pub struct MockTarget {
     responses: Vec<String>,
@@ -367,5 +444,26 @@ mod tests {
 
         let err = TargetError::RateLimit;
         assert!(err.to_string().contains("Rate limit"));
+    }
+
+    #[test]
+    fn test_ollama_target_new() {
+        let target = OllamaTarget::new("llama3.2");
+        assert_eq!(target.name(), "llama3.2");
+        assert_eq!(target.base_url, "http://localhost:11434");
+    }
+
+    #[test]
+    fn test_ollama_target_with_url() {
+        let target = OllamaTarget::with_url("mistral", "http://192.168.1.100:11434");
+        assert_eq!(target.name(), "mistral");
+        assert_eq!(target.base_url, "http://192.168.1.100:11434");
+    }
+
+    #[test]
+    fn test_ollama_target_from_env_default() {
+        std::env::remove_var("OLLAMA_HOST");
+        let target = OllamaTarget::from_env("llama3.2");
+        assert_eq!(target.base_url, "http://localhost:11434");
     }
 }

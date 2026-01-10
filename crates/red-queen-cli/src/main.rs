@@ -20,7 +20,7 @@ use std::sync::RwLock;
 use red_queen_llm::fitness::{EvaluationRecord, JailbreakFitness, JudgeMode, JudgedJailbreakFitness};
 use red_queen_llm::genome::LLMAttackGenome;
 use red_queen_llm::judge::JudgeResult;
-use red_queen_llm::targets::{AnthropicTarget, GeminiTarget, LLMTarget, MockTarget, OpenAITarget};
+use red_queen_llm::targets::{AnthropicTarget, GeminiTarget, LLMTarget, MockTarget, OllamaTarget, OpenAITarget};
 
 #[derive(Parser)]
 #[command(name = "red-queen")]
@@ -54,6 +54,7 @@ enum LlmCommands {
         ///   openai:gpt-4             - OpenAI GPT-4
         ///   anthropic:claude-sonnet-4-20250514 - Anthropic Claude
         ///   gemini:gemini-2.0-flash  - Google Gemini
+        ///   ollama:llama3.2          - Local Ollama model
         ///   mock:refuse              - Mock target (always refuses)
         ///   mock:comply              - Mock target (always complies)
         #[arg(short, long)]
@@ -151,8 +152,12 @@ fn parse_target(target_str: &str) -> Result<Arc<dyn LLMTarget>> {
                 .context("Failed to create Gemini target. Is GOOGLE_API_KEY set?")?;
             Ok(Arc::new(target))
         }
+        ["ollama", model] => {
+            let target = OllamaTarget::from_env(model);
+            Ok(Arc::new(target))
+        }
         _ => Err(anyhow!(
-            "Unknown target: '{}'. Use 'openai:', 'anthropic:', 'gemini:', or 'mock:'",
+            "Unknown target: '{}'. Use 'openai:', 'anthropic:', 'gemini:', 'ollama:', or 'mock:'",
             target_str
         )),
     }
@@ -797,6 +802,12 @@ mod tests {
         assert!(result.is_err());
         let err = result.err().unwrap();
         assert!(err.to_string().contains("GOOGLE_API_KEY"));
+    }
+
+    #[test]
+    fn test_parse_target_ollama() {
+        let target = parse_target("ollama:llama3.2").unwrap();
+        assert_eq!(target.name(), "llama3.2");
     }
 
     #[test]
