@@ -16,7 +16,24 @@ cargo run -p red-queen-cli -- llm jailbreak \
 
 This runs 10 generations with 20 individuals against a mock target that always complies.
 
-## Run Against a Real Target
+## Run Against a Local Target (Ollama)
+
+Test locally without API costs using Ollama:
+
+```bash
+# Install Ollama from https://ollama.ai
+# Pull a model: ollama pull llama3.2
+
+cargo run -p red-queen-cli -- llm jailbreak \
+  --target ollama:llama3.2 \
+  --generations 20 \
+  --population 30 \
+  --verbose
+```
+
+This connects to your local Ollama instance at `http://localhost:11434`.
+
+## Run Against a Cloud Target
 
 With your API key configured, test against a real model:
 

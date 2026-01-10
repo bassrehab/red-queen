@@ -150,4 +150,27 @@ With `--judge`: 10,000 calls (target + judge for each)
 | `OPENAI_API_KEY` | OpenAI API access |
 | `ANTHROPIC_API_KEY` | Anthropic API access |
 | `GOOGLE_API_KEY` | Google Gemini API access |
+| `OLLAMA_HOST` | Ollama host URL (default: `http://localhost:11434`) |
 | `RED_QUEEN_LOG` | Log level (debug, info, warn, error) |
+
+## Local Testing with Ollama
+
+For cost-free local testing, use [Ollama](https://ollama.ai):
+
+```bash
+# Install and start Ollama
+ollama pull llama3.2
+
+# Run evolution locally
+red-queen llm jailbreak \
+  --target ollama:llama3.2 \
+  --generations 50 \
+  --population 30
+```
+
+To use a remote Ollama instance:
+
+```bash
+export OLLAMA_HOST=http://192.168.1.100:11434
+red-queen llm jailbreak --target ollama:mistral
+```

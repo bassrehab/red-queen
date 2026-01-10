@@ -116,6 +116,24 @@ pub struct GeminiTarget {
 }
 ```
 
+#### Ollama
+
+For local LLM testing without API costs:
+
+```rust
+pub struct OllamaTarget {
+    client: reqwest::Client,
+    model: String,
+    base_url: String,  // Default: http://localhost:11434
+}
+
+impl OllamaTarget {
+    pub fn new(model: &str) -> Self;
+    pub fn with_url(model: &str, base_url: &str) -> Self;
+    pub fn from_env(model: &str) -> Self;  // Uses OLLAMA_HOST if set
+}
+```
+
 #### Mock
 
 For testing without API calls:
