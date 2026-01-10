@@ -140,6 +140,60 @@ impl Tournament {
 }
 ```
 
+#### `NoveltyArchive`
+
+```rust
+pub struct NoveltyArchive {
+    behaviors: Vec<BehaviorDescriptor>,
+    max_size: usize,
+    add_threshold: f64,
+}
+
+impl NoveltyArchive {
+    pub fn new(max_size: usize, add_threshold: f64) -> Self;
+    pub fn add(&mut self, behavior: &BehaviorDescriptor, novelty: f64) -> bool;
+    pub fn force_add(&mut self, behavior: BehaviorDescriptor);
+    pub fn behaviors(&self) -> &[BehaviorDescriptor];
+    pub fn len(&self) -> usize;
+    pub fn is_empty(&self) -> bool;
+    pub fn compute_novelty(&self, behavior: &BehaviorDescriptor, k: usize, population_behaviors: &[&BehaviorDescriptor]) -> f64;
+}
+```
+
+#### `NoveltySelection`
+
+```rust
+pub struct NoveltySelection {
+    pub k: usize,
+    pub tournament_size: usize,
+    archive: Arc<RwLock<NoveltyArchive>>,
+}
+
+impl NoveltySelection {
+    pub fn new(k: usize, tournament_size: usize, archive: Arc<RwLock<NoveltyArchive>>) -> Self;
+    pub fn with_archive(archive: Arc<RwLock<NoveltyArchive>>) -> Self;
+    pub fn compute_novelty_scores<G: Genome>(&self, population: &Population<G>) -> Vec<f64>;
+    pub fn update_archive<G: Genome>(&self, population: &Population<G>);
+    pub fn archive(&self) -> Arc<RwLock<NoveltyArchive>>;
+}
+```
+
+#### `NoveltyFitnessSelection`
+
+```rust
+pub struct NoveltyFitnessSelection {
+    novelty: NoveltySelection,
+    fitness_weight: f64,  // 0.0 = pure novelty, 1.0 = pure fitness
+}
+
+impl NoveltyFitnessSelection {
+    pub fn new(novelty: NoveltySelection, fitness_weight: f64) -> Self;
+    pub fn compute_combined_scores<G: Genome>(&self, population: &Population<G>) -> Vec<f64>;
+    pub fn archive(&self) -> Arc<RwLock<NoveltyArchive>>;
+    pub fn update_archive<G: Genome>(&self, population: &Population<G>);
+}
+```
+
 ### `evolution`
 
 Evolution engines (standard and MAP-Elites).
