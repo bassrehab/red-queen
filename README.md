@@ -17,16 +17,14 @@ Red Queen uses quality-diversity evolution to discover diverse vulnerabilities i
 ## Quick Start
 
 ```bash
-# Clone and build
-git clone https://github.com/bassrehab/red-queen.git
-cd red-queen
-cargo build --workspace
+# Install from crates.io
+cargo install red-queen-cli
 
 # Set your API key
 export OPENAI_API_KEY="your-key"
 
 # Discover jailbreaks against GPT-4
-cargo run -p red-queen-cli -- llm jailbreak \
+red-queen llm jailbreak \
     --target openai:gpt-4 \
     --population 100 \
     --generations 500 \
