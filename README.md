@@ -89,13 +89,18 @@ results.export("jailbreaks.json")
 └─────────────────────────┘     └─────────────────────────┘
 ```
 
+## Paper
+
+**Quality-Diversity Evolution for Discovering Diverse Vulnerabilities in LLM Safety**
+*Subhadip Mitra* — Published at ICLR 2026 Workshop on Agents in the Wild
+
 ## Documentation
 
-- [Getting Started](_dev/getting-started.md)
-- [Architecture](_dev/ARCHITECTURE.md)
-- [API Design](_dev/API_DESIGN.md)
-- [LLM Safety Domain](_dev/llm-safety.md)
-- [Research Background](_dev/RESEARCH_NOVELTY.md)
+- [Getting Started](docs/src/getting-started.md)
+- [Architecture](docs/src/architecture/overview.md)
+- [API Reference](docs/src/api/core.md)
+- [LLM Safety Domain](docs/src/concepts/llm-safety.md)
+- [CLI Reference](docs/src/cli-reference.md)
 
 ## Responsible Use
 
@@ -110,7 +115,7 @@ Red Queen is a security research tool for improving AI safety. It should be used
 - Generate harmful content for malicious purposes
 - Circumvent safety measures for harm
 
-See [SECURITY.md](_dev/SECURITY.md) for responsible disclosure guidelines.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for responsible disclosure guidelines.
 
 ## Contributing
 
@@ -126,18 +131,18 @@ cargo test --workspace
 
 ## License
 
-Apache 2.0 - see [LICENSE](LICENSE)
+AGPL-3.0 - see [LICENSE](LICENSE)
 
 ## Citation
 
 If you use Red Queen in research, please cite:
 
 ```bibtex
-@software{red_queen,
-  author = {Mitra, Subhadip},
-  title = {Red Queen: Evolutionary Adversarial Testing Framework},
-  year = {2025},
-  url = {https://github.com/bassrehab/red-queen}
+@inproceedings{mitra2026redqueen,
+  title={Quality-Diversity Evolution for Discovering Diverse Vulnerabilities in LLM Safety},
+  author={Mitra, Subhadip},
+  booktitle={ICLR 2026 Workshop on Agents in the Wild},
+  year={2026}
 }
 ```
 
