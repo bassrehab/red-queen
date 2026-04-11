@@ -47,27 +47,56 @@ impl OpenAITarget {
             .map_err(|_| TargetError::Api("OPENAI_API_KEY not set".to_string()))?;
         Ok(Self::new(model, &api_key))
     }
+
+    /// Reasoning-capable OpenAI models require `max_completion_tokens` and
+    /// reject the legacy `max_tokens` field with HTTP 400.
+    fn is_reasoning_model(model: &str) -> bool {
+        let m = model.to_ascii_lowercase();
+        m.starts_with("o1")
+            || m.starts_with("o3")
+            || m.starts_with("o4")
+            || m.starts_with("gpt-5")
+    }
 }
 
 #[async_trait]
 impl LLMTarget for OpenAITarget {
     async fn query(&self, prompt: &str) -> Result<String, TargetError> {
+        let (token_field, token_budget) = if Self::is_reasoning_model(&self.model) {
+            // Reasoning models consume output budget on hidden reasoning tokens,
+            // so give them significantly more headroom than chat-only models.
+            ("max_completion_tokens", 4096)
+        } else {
+            ("max_tokens", 1024)
+        };
+
+        let mut body = serde_json::json!({
+            "model": self.model,
+            "messages": [
+                {"role": "user", "content": prompt}
+            ],
+        });
+        body[token_field] = serde_json::json!(token_budget);
+
         let response = self
             .client
             .post("https://api.openai.com/v1/chat/completions")
             .header("Authorization", format!("Bearer {}", self.api_key))
-            .json(&serde_json::json!({
-                "model": self.model,
-                "messages": [
-                    {"role": "user", "content": prompt}
-                ],
-                "max_tokens": 1000
-            }))
+            .json(&body)
             .send()
             .await?;
 
         if response.status() == 429 {
             return Err(TargetError::RateLimit);
+        }
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let body = response.text().await.unwrap_or_default();
+            return Err(TargetError::Api(format!(
+                "OpenAI API error {}: {}",
+                status, body
+            )));
         }
 
         let body: serde_json::Value = response.json().await?;
