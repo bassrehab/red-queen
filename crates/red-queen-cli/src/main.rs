@@ -20,6 +20,7 @@ use std::sync::RwLock;
 use red_queen_llm::fitness::{EvaluationRecord, JailbreakFitness, JudgeMode, JudgedJailbreakFitness};
 use red_queen_llm::genome::LLMAttackGenome;
 use red_queen_llm::judge::JudgeResult;
+use red_queen_llm::seeds::{self, SeedPool};
 use red_queen_llm::targets::{AnthropicTarget, GeminiTarget, LLMTarget, MockTarget, OllamaTarget, OpenAITarget};
 
 #[derive(Parser)]
@@ -132,6 +133,15 @@ enum LlmCommands {
         /// Higher values speed up evolution but may hit API rate limits.
         #[arg(long, default_value = "10")]
         concurrency: usize,
+
+        /// Path to a JSONL file of seed behaviors (e.g. HarmBench, AdvBench).
+        /// Each line must be a JSON object with fields:
+        ///   {"id": "...", "behavior": "...", "category": "...", "tags": []}
+        /// When provided, initial genomes draw their core from this pool
+        /// instead of the generic placeholder. The file is read from disk
+        /// and is never embedded in the crate — bring your own dataset.
+        #[arg(long)]
+        seeds: Option<String>,
     },
 }
 
@@ -199,6 +209,12 @@ struct AttackResult {
     fitness: f64,
     prompt: String,
     generation: usize,
+    /// Originating seed behavior id, if the genome was seeded.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    seed_id: Option<String>,
+    /// Originating seed category, if known.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    seed_category: Option<String>,
     /// Response from target (if stored).
     #[serde(skip_serializing_if = "Option::is_none")]
     response: Option<String>,
@@ -240,6 +256,8 @@ fn genome_to_result(
         fitness,
         prompt: genome.to_prompt(),
         generation,
+        seed_id: genome.seed_id.clone(),
+        seed_category: genome.seed_category.clone(),
         response,
         judge_result: judge_result.map(SerializableJudgeResult::from),
     }
@@ -377,6 +395,7 @@ fn run_jailbreak_evolution(
     novelty_weight: f64,
     novelty_k: usize,
     concurrency: usize,
+    seeds_path: Option<&str>,
 ) -> Result<()> {
     println!();
     println!("  Red Queen - LLM Jailbreak Discovery");
@@ -395,6 +414,26 @@ fn run_jailbreak_evolution(
         println!("  Seed:         {}", s);
     }
     println!("  Output:       {}", output);
+
+    // Load and install seed pool if the user supplied one.
+    if let Some(path) = seeds_path {
+        let pool = SeedPool::from_jsonl_path(path)
+            .with_context(|| format!("Failed to load seed pool from {}", path))?;
+        if pool.is_empty() {
+            return Err(anyhow!("Seed file {} contains no behaviors", path));
+        }
+        println!("  Seeds:        {} ({} behaviors)", path, pool.len());
+        let counts = pool.category_counts();
+        if !counts.is_empty() {
+            println!("  Categories:");
+            for (cat, n) in &counts {
+                println!("    - {:<32} {}", cat, n);
+            }
+        }
+        seeds::install_seed_pool(pool);
+    } else {
+        println!("  Seeds:        <none> (using generic placeholder)");
+    }
 
     // Determine fitness evaluator mode
     let use_judge = judge_str.is_some() || store_responses;
@@ -739,6 +778,7 @@ fn main() -> Result<()> {
                 novelty_weight,
                 novelty_k,
                 concurrency,
+                seeds,
             } => {
                 run_jailbreak_evolution(
                     &target,
@@ -759,6 +799,7 @@ fn main() -> Result<()> {
                     novelty_weight,
                     novelty_k,
                     concurrency,
+                    seeds.as_deref(),
                 )?;
             }
         },
@@ -848,6 +889,8 @@ mod tests {
             fitness: 0.75,
             prompt: "test prompt".to_string(),
             generation: 5,
+            seed_id: None,
+            seed_category: None,
             response: Some("I can help with that".to_string()),
             judge_result: Some(SerializableJudgeResult {
                 score: 0.8,
@@ -879,6 +922,8 @@ mod tests {
             fitness: 0.5,
             prompt: "test".to_string(),
             generation: 1,
+            seed_id: None,
+            seed_category: None,
             response: None,
             judge_result: None,
         };
@@ -902,6 +947,8 @@ mod tests {
                 fitness: 1.0,
                 prompt: "test".to_string(),
                 generation: 10,
+                seed_id: None,
+                seed_category: None,
                 response: None,
                 judge_result: None,
             },

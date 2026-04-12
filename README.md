@@ -29,6 +29,16 @@ red-queen llm jailbreak \
     --population 100 \
     --generations 500 \
     --output results.json
+
+# Seed evolution from a benchmark dataset (HarmBench, AdvBench, ...).
+# Bring your own dataset — convert it to JSONL with the schema:
+#   {"id": "...", "behavior": "...", "category": "...", "tags": []}
+# and point --seeds at the file. The crate does not ship any dataset.
+red-queen llm jailbreak \
+    --target openai:gpt-4 \
+    --seeds experiments/seeds/harmbench.jsonl \
+    --generations 500 \
+    --output results.json
 ```
 
 ## Python

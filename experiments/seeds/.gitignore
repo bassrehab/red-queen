@@ -1,0 +1,9 @@
+# Keep real benchmark datasets (HarmBench, AdvBench, etc.) out of git.
+# Users should fetch them themselves — they are published under their own
+# licenses and we don't want to redistribute harmful prompt content.
+*.jsonl
+*.csv
+*.json
+
+# Allow the synthetic example so the loader has a smoke-test target.
+!example.jsonl

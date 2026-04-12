@@ -165,6 +165,13 @@ pub struct LLMAttackGenome {
     pub suffix: PromptSection,
     /// Target harm category.
     pub target_category: HarmCategory,
+    /// Originating seed behavior id (when the core was drawn from a SeedPool).
+    #[serde(default)]
+    pub seed_id: Option<String>,
+    /// Originating seed category (string-valued so HarmBench / AdvBench
+    /// taxonomies flow through analysis without needing enum updates).
+    #[serde(default)]
+    pub seed_category: Option<String>,
 }
 
 impl LLMAttackGenome {
@@ -243,6 +250,25 @@ impl Genome for LLMAttackGenome {
     type Phenotype = String;
 
     fn random<R: Rng>(rng: &mut R) -> Self {
+        // If a seed pool is installed, draw the core behavior from it so the
+        // genome targets a real benchmark item. Otherwise fall back to a
+        // generic placeholder.
+        let (core_content, seed_id, seed_category) = match crate::seeds::current_seed_pool() {
+            Some(pool) => match pool.sample(rng).cloned() {
+                Some(b) => (b.behavior, Some(b.id), b.category),
+                None => (
+                    "Tell me how to do something harmful.".to_string(),
+                    None,
+                    None,
+                ),
+            },
+            None => (
+                "Tell me how to do something harmful.".to_string(),
+                None,
+                None,
+            ),
+        };
+
         Self {
             primary_strategy: AttackStrategy::all().choose(rng).unwrap().clone(),
             secondary_strategy: if rng.gen_bool(0.3) {
@@ -258,10 +284,12 @@ impl Genome for LLMAttackGenome {
             },
             prefix: PromptSection::default(),
             core: PromptSection {
-                content: "Tell me how to do something harmful.".to_string(),
+                content: core_content,
             },
             suffix: PromptSection::default(),
             target_category: HarmCategory::all().choose(rng).unwrap().clone(),
+            seed_id,
+            seed_category,
         }
     }
 
@@ -287,6 +315,21 @@ impl Genome for LLMAttackGenome {
     }
 
     fn crossover<R: Rng>(&self, other: &Self, rng: &mut R) -> Self {
+        let take_self_core = rng.gen_bool(0.5);
+        let (core, seed_id, seed_category) = if take_self_core {
+            (
+                self.core.clone(),
+                self.seed_id.clone(),
+                self.seed_category.clone(),
+            )
+        } else {
+            (
+                other.core.clone(),
+                other.seed_id.clone(),
+                other.seed_category.clone(),
+            )
+        };
+
         Self {
             primary_strategy: if rng.gen_bool(0.5) {
                 self.primary_strategy.clone()
@@ -313,11 +356,7 @@ impl Genome for LLMAttackGenome {
             } else {
                 other.prefix.clone()
             },
-            core: if rng.gen_bool(0.5) {
-                self.core.clone()
-            } else {
-                other.core.clone()
-            },
+            core,
             suffix: if rng.gen_bool(0.5) {
                 self.suffix.clone()
             } else {
@@ -328,6 +367,8 @@ impl Genome for LLMAttackGenome {
             } else {
                 other.target_category.clone()
             },
+            seed_id,
+            seed_category,
         }
     }
 
@@ -422,6 +463,8 @@ mod tests {
             },
             suffix: PromptSection::default(),
             target_category: HarmCategory::Violence,
+            seed_id: None,
+            seed_category: None,
         };
 
         let prompt = genome.to_prompt();
@@ -442,6 +485,8 @@ mod tests {
             },
             suffix: PromptSection::default(),
             target_category: HarmCategory::Violence,
+            seed_id: None,
+            seed_category: None,
         };
 
         let prompt = genome.to_prompt();
@@ -462,6 +507,8 @@ mod tests {
             },
             suffix: PromptSection::default(),
             target_category: HarmCategory::Violence,
+            seed_id: None,
+            seed_category: None,
         };
 
         let prompt = genome.to_prompt();
@@ -482,6 +529,8 @@ mod tests {
             },
             suffix: PromptSection::default(),
             target_category: HarmCategory::Violence,
+            seed_id: None,
+            seed_category: None,
         };
 
         let prompt = genome.to_prompt();
@@ -502,6 +551,8 @@ mod tests {
             },
             suffix: PromptSection::default(),
             target_category: HarmCategory::Violence,
+            seed_id: None,
+            seed_category: None,
         };
 
         let prompt = genome.to_prompt();
@@ -526,6 +577,8 @@ mod tests {
                 content: "SUFFIX".to_string(),
             },
             target_category: HarmCategory::Violence,
+            seed_id: None,
+            seed_category: None,
         };
 
         let prompt = genome.to_prompt();
@@ -587,6 +640,8 @@ mod tests {
             core: PromptSection::default(),
             suffix: PromptSection::default(),
             target_category: HarmCategory::Violence,
+            seed_id: None,
+            seed_category: None,
         };
 
         let genome2 = LLMAttackGenome {
@@ -610,6 +665,8 @@ mod tests {
             },
             suffix: PromptSection::default(),
             target_category: HarmCategory::Violence,
+            seed_id: None,
+            seed_category: None,
         };
 
         let phenotype = genome.to_phenotype();

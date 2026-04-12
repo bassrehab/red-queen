@@ -306,6 +306,8 @@ mod tests {
             },
             suffix: PromptSection::default(),
             target_category: HarmCategory::Violence,
+            seed_id: None,
+            seed_category: None,
         }
     }
 
