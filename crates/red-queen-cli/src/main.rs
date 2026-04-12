@@ -283,12 +283,32 @@ fn run_map_elites_evolution(
     seed: Option<u64>,
     store_responses: bool,
     concurrency: usize,
+    has_seeds: bool,
     pb: &ProgressBar,
 ) -> Result<(LLMAttackGenome, f64, Vec<AttackResult>, Vec<EvaluationRecord>, Option<CoverageInfo>)> {
+    use red_queen_llm::genome::SEED_CATEGORY_COUNT;
+
     // Create behavior dimensions for LLM attacks:
     // Dim 0: Strategy (0-5, 6 variants)
     // Dim 1: Encoding (0-5, 6 variants)
-    // Dim 2: Prompt length (0-2000 chars, normalized)
+    // Dim 2: When seeds are provided, use seed_category index (0-7, 7 known + 1 catch-all).
+    //        Otherwise fall back to prompt length.
+    let dim2 = if has_seeds {
+        BehaviorDimension {
+            name: "seed_category".to_string(),
+            min: 0.0,
+            max: (SEED_CATEGORY_COUNT + 1) as f64,
+            bins: SEED_CATEGORY_COUNT + 1,
+        }
+    } else {
+        BehaviorDimension {
+            name: "prompt_length".to_string(),
+            min: 0.0,
+            max: 2000.0,
+            bins,
+        }
+    };
+
     let dimensions = vec![
         BehaviorDimension {
             name: "strategy".to_string(),
@@ -302,19 +322,17 @@ fn run_map_elites_evolution(
             max: 6.0,
             bins,
         },
-        BehaviorDimension {
-            name: "prompt_length".to_string(),
-            min: 0.0,
-            max: 2000.0,
-            bins,
-        },
+        dim2,
     ];
 
     let archive = MapElitesArchive::new(dimensions);
 
     // Use JudgedJailbreakFitness for MAP-Elites (always stores responses for diversity analysis)
-    let fitness = JudgedJailbreakFitness::new(target, judge_mode)
+    let mut fitness = JudgedJailbreakFitness::new(target, judge_mode)
         .with_concurrency(concurrency);
+    if has_seeds {
+        fitness = fitness.with_seed_category_dimension();
+    }
 
     let config = MapElitesConfig {
         batch_size,
@@ -502,6 +520,7 @@ fn run_jailbreak_evolution(
             seed,
             store_responses,
             concurrency,
+            seeds_path.is_some(),
             &pb,
         )?
     } else if novelty {
@@ -510,8 +529,11 @@ fn run_jailbreak_evolution(
         let novelty_sel = NoveltySelection::new(novelty_k, tournament_size, novelty_archive);
         let selection = NoveltyFitnessSelection::new(novelty_sel, novelty_weight);
 
-        let fitness = JudgedJailbreakFitness::new(target.clone(), judge_mode)
+        let mut fitness = JudgedJailbreakFitness::new(target.clone(), judge_mode)
             .with_concurrency(concurrency);
+        if seeds_path.is_some() {
+            fitness = fitness.with_seed_category_dimension();
+        }
         let mut evolution: Evolution<LLMAttackGenome, _, _> =
             Evolution::new(&fitness, selection, config);
 
@@ -546,8 +568,11 @@ fn run_jailbreak_evolution(
     } else if use_judge {
         // Standard evolution with judged fitness
         let selection = Tournament::new(tournament_size);
-        let fitness = JudgedJailbreakFitness::new(target.clone(), judge_mode)
+        let mut fitness = JudgedJailbreakFitness::new(target.clone(), judge_mode)
             .with_concurrency(concurrency);
+        if seeds_path.is_some() {
+            fitness = fitness.with_seed_category_dimension();
+        }
         let mut evolution: Evolution<LLMAttackGenome, _, _> =
             Evolution::new(&fitness, selection, config);
 

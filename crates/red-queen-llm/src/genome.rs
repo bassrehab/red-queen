@@ -174,7 +174,31 @@ pub struct LLMAttackGenome {
     pub seed_category: Option<String>,
 }
 
+/// Number of known seed categories (HarmBench semantic taxonomy).
+pub const SEED_CATEGORY_COUNT: usize = 7;
+
+/// Map a seed_category string to a stable index for behavior descriptors.
+/// Returns `SEED_CATEGORY_COUNT` (i.e. 7) for unknown / missing categories,
+/// so the MAP-Elites grid has 8 bins: 7 known + 1 catch-all.
+pub fn seed_category_to_index(category: Option<&str>) -> f64 {
+    match category {
+        Some("chemical_biological") => 0.0,
+        Some("copyright") => 1.0,
+        Some("cybercrime_intrusion") => 2.0,
+        Some("harassment_bullying") => 3.0,
+        Some("harmful") => 4.0,
+        Some("illegal") => 5.0,
+        Some("misinformation_disinformation") => 6.0,
+        _ => SEED_CATEGORY_COUNT as f64,
+    }
+}
+
 impl LLMAttackGenome {
+    /// Stable numeric index for this genome's seed category.
+    pub fn seed_category_index(&self) -> f64 {
+        seed_category_to_index(self.seed_category.as_deref())
+    }
+
     /// Convert genome to actual prompt string.
     pub fn to_prompt(&self) -> String {
         let mut prompt = String::new();

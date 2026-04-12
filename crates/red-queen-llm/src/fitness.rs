@@ -33,6 +33,10 @@ pub struct JailbreakFitness {
     target: Arc<dyn LLMTarget>,
     /// Maximum concurrent evaluations.
     concurrency: usize,
+    /// When true, the 3rd behavior dimension is seed_category index
+    /// instead of prompt length. Enables meaningful MAP-Elites when
+    /// evolving from a seed pool.
+    use_seed_category: bool,
 }
 
 impl JailbreakFitness {
@@ -41,6 +45,7 @@ impl JailbreakFitness {
         Self {
             target,
             concurrency: DEFAULT_CONCURRENCY,
+            use_seed_category: false,
         }
     }
 
@@ -50,12 +55,23 @@ impl JailbreakFitness {
         self
     }
 
+    /// Use seed_category as the 3rd behavior dimension for MAP-Elites.
+    pub fn with_seed_category_dimension(mut self) -> Self {
+        self.use_seed_category = true;
+        self
+    }
+
     /// Characterize behavior for QD.
     fn characterize_behavior(&self, genome: &LLMAttackGenome) -> BehaviorDescriptor {
+        let dim2 = if self.use_seed_category {
+            genome.seed_category_index()
+        } else {
+            genome.to_prompt().len() as f64
+        };
         BehaviorDescriptor::new(vec![
             genome.primary_strategy.to_behavior_value(),
             genome.encoding.to_behavior_value(),
-            genome.to_prompt().len() as f64,
+            dim2,
         ])
     }
 
@@ -144,6 +160,8 @@ pub struct JudgedJailbreakFitness {
     records: Mutex<HashMap<String, EvaluationRecord>>,
     /// Maximum concurrent evaluations (for rate limiting).
     concurrency: usize,
+    /// When true, 3rd behavior dimension is seed_category index.
+    use_seed_category: bool,
 }
 
 impl JudgedJailbreakFitness {
@@ -159,6 +177,7 @@ impl JudgedJailbreakFitness {
             judge,
             records: Mutex::new(HashMap::new()),
             concurrency: DEFAULT_CONCURRENCY,
+            use_seed_category: false,
         }
     }
 
@@ -169,6 +188,7 @@ impl JudgedJailbreakFitness {
             judge,
             records: Mutex::new(HashMap::new()),
             concurrency: DEFAULT_CONCURRENCY,
+            use_seed_category: false,
         }
     }
 
@@ -178,6 +198,12 @@ impl JudgedJailbreakFitness {
     /// Default is 10.
     pub fn with_concurrency(mut self, concurrency: usize) -> Self {
         self.concurrency = concurrency.max(1);
+        self
+    }
+
+    /// Use seed_category as the 3rd behavior dimension for MAP-Elites.
+    pub fn with_seed_category_dimension(mut self) -> Self {
+        self.use_seed_category = true;
         self
     }
 
@@ -211,10 +237,15 @@ impl JudgedJailbreakFitness {
 
     /// Characterize behavior for QD.
     fn characterize_behavior(&self, genome: &LLMAttackGenome) -> BehaviorDescriptor {
+        let dim2 = if self.use_seed_category {
+            genome.seed_category_index()
+        } else {
+            genome.to_prompt().len() as f64
+        };
         BehaviorDescriptor::new(vec![
             genome.primary_strategy.to_behavior_value(),
             genome.encoding.to_behavior_value(),
-            genome.to_prompt().len() as f64,
+            dim2,
         ])
     }
 
