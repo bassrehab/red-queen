@@ -25,10 +25,14 @@ pub trait LLMTarget: Send + Sync {
 }
 
 /// OpenAI API target.
+///
+/// Also used for OpenAI-compatible APIs (HuggingFace, Together, etc.)
+/// via a custom `base_url`.
 pub struct OpenAITarget {
     client: reqwest::Client,
     model: String,
     api_key: String,
+    base_url: String,
 }
 
 impl OpenAITarget {
@@ -38,6 +42,17 @@ impl OpenAITarget {
             client: reqwest::Client::new(),
             model: model.to_string(),
             api_key: api_key.to_string(),
+            base_url: "https://api.openai.com".to_string(),
+        }
+    }
+
+    /// Create with a custom base URL (for OpenAI-compatible APIs).
+    pub fn with_base_url(model: &str, api_key: &str, base_url: &str) -> Self {
+        Self {
+            client: reqwest::Client::new(),
+            model: model.to_string(),
+            api_key: api_key.to_string(),
+            base_url: base_url.trim_end_matches('/').to_string(),
         }
     }
 
@@ -46,6 +61,19 @@ impl OpenAITarget {
         let api_key = std::env::var("OPENAI_API_KEY")
             .map_err(|_| TargetError::Api("OPENAI_API_KEY not set".to_string()))?;
         Ok(Self::new(model, &api_key))
+    }
+
+    /// Create a HuggingFace target via the OpenAI-compatible router.
+    /// Reads `HUGGINGFACE_TOKEN_QAA` from the environment.
+    pub fn huggingface_from_env(model: &str) -> Result<Self, TargetError> {
+        let api_key = std::env::var("HUGGINGFACE_TOKEN_QAA").map_err(|_| {
+            TargetError::Api("HUGGINGFACE_TOKEN_QAA not set".to_string())
+        })?;
+        Ok(Self::with_base_url(
+            model,
+            &api_key,
+            "https://router.huggingface.co",
+        ))
     }
 
     /// Reasoning-capable OpenAI models require `max_completion_tokens` and
@@ -78,9 +106,10 @@ impl LLMTarget for OpenAITarget {
         });
         body[token_field] = serde_json::json!(token_budget);
 
+        let url = format!("{}/v1/chat/completions", self.base_url);
         let response = self
             .client
-            .post("https://api.openai.com/v1/chat/completions")
+            .post(&url)
             .header("Authorization", format!("Bearer {}", self.api_key))
             .json(&body)
             .send()
@@ -94,8 +123,8 @@ impl LLMTarget for OpenAITarget {
             let status = response.status();
             let body = response.text().await.unwrap_or_default();
             return Err(TargetError::Api(format!(
-                "OpenAI API error {}: {}",
-                status, body
+                "OpenAI-compatible API error from {} ({}): {}",
+                self.base_url, status, body
             )));
         }
 
@@ -450,6 +479,34 @@ mod tests {
         std::env::remove_var("OPENAI_API_KEY");
         let result = OpenAITarget::from_env("gpt-4");
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_openai_with_base_url_strips_trailing_slash() {
+        let target =
+            OpenAITarget::with_base_url("gpt-4", "test-key", "https://example.com/api/");
+        assert_eq!(target.base_url, "https://example.com/api");
+        assert_eq!(target.name(), "gpt-4");
+    }
+
+    #[test]
+    fn test_openai_new_uses_openai_base_url() {
+        let target = OpenAITarget::new("gpt-4", "test-key");
+        assert_eq!(target.base_url, "https://api.openai.com");
+    }
+
+    // Single test that exercises both the missing-key and happy-path branches.
+    // Merged to avoid env-var races with other tests running in parallel.
+    #[test]
+    fn test_huggingface_from_env() {
+        std::env::remove_var("HUGGINGFACE_TOKEN_QAA");
+        assert!(OpenAITarget::huggingface_from_env("google/gemma-7b-it").is_err());
+
+        std::env::set_var("HUGGINGFACE_TOKEN_QAA", "test-key");
+        let target = OpenAITarget::huggingface_from_env("google/gemma-7b-it").unwrap();
+        assert_eq!(target.base_url, "https://router.huggingface.co");
+        assert_eq!(target.name(), "google/gemma-7b-it");
+        std::env::remove_var("HUGGINGFACE_TOKEN_QAA");
     }
 
     #[test]

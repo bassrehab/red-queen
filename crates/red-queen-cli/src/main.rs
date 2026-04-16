@@ -55,6 +55,7 @@ enum LlmCommands {
         ///   openai:gpt-4             - OpenAI GPT-4
         ///   anthropic:claude-sonnet-4-20250514 - Anthropic Claude
         ///   gemini:gemini-2.0-flash  - Google Gemini
+        ///   huggingface:google/gemma-7b-it - HuggingFace router (OpenAI-compatible)
         ///   ollama:llama3.2          - Local Ollama model
         ///   mock:refuse              - Mock target (always refuses)
         ///   mock:comply              - Mock target (always complies)
@@ -147,6 +148,17 @@ enum LlmCommands {
 
 /// Parse target string into an LLMTarget.
 fn parse_target(target_str: &str) -> Result<Arc<dyn LLMTarget>> {
+    // Handle huggingface: first — HF model IDs may contain a ':' provider suffix
+    // (e.g. "meta-llama/Llama-3-8B:novita"), so a naive split(':') would fail.
+    if let Some(model) = target_str.strip_prefix("huggingface:") {
+        if model.is_empty() {
+            return Err(anyhow!("Empty HuggingFace model ID in target '{}'", target_str));
+        }
+        let target = OpenAITarget::huggingface_from_env(model)
+            .context("Failed to create HuggingFace target. Is HUGGINGFACE_TOKEN_QAA set?")?;
+        return Ok(Arc::new(target));
+    }
+
     let parts: Vec<&str> = target_str.split(':').collect();
 
     match parts.as_slice() {
@@ -172,7 +184,7 @@ fn parse_target(target_str: &str) -> Result<Arc<dyn LLMTarget>> {
             Ok(Arc::new(target))
         }
         _ => Err(anyhow!(
-            "Unknown target: '{}'. Use 'openai:', 'anthropic:', 'gemini:', 'ollama:', or 'mock:'",
+            "Unknown target: '{}'. Use 'openai:', 'anthropic:', 'gemini:', 'huggingface:', 'ollama:', or 'mock:'",
             target_str
         )),
     }
@@ -889,6 +901,28 @@ mod tests {
     fn test_parse_target_ollama() {
         let target = parse_target("ollama:llama3.2").unwrap();
         assert_eq!(target.name(), "llama3.2");
+    }
+
+    // Single test that exercises all huggingface: parser branches.
+    // Merged to avoid env-var races with other tests running in parallel.
+    #[test]
+    fn test_parse_target_huggingface() {
+        std::env::remove_var("HUGGINGFACE_TOKEN_QAA");
+        let result = parse_target("huggingface:google/gemma-7b-it");
+        assert!(result.is_err());
+        assert!(result.err().unwrap().to_string().contains("HUGGINGFACE_TOKEN_QAA"));
+
+        std::env::set_var("HUGGINGFACE_TOKEN_QAA", "test-key");
+
+        // HF router model IDs may carry a provider suffix after a second ':'.
+        // The parser must keep that suffix intact rather than splitting on it.
+        let target = parse_target("huggingface:meta-llama/Llama-3-8B:novita").unwrap();
+        assert_eq!(target.name(), "meta-llama/Llama-3-8B:novita");
+
+        let result = parse_target("huggingface:");
+        assert!(result.is_err());
+
+        std::env::remove_var("HUGGINGFACE_TOKEN_QAA");
     }
 
     #[test]
