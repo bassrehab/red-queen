@@ -145,6 +145,31 @@ enum LlmCommands {
         #[arg(long)]
         seeds: Option<String>,
     },
+
+    /// Replay a saved MAP-Elites archive against a different target model.
+    /// Used for cross-generational transfer analysis.
+    Transfer {
+        /// Path to a saved archive JSON (from a previous MAP-Elites run).
+        #[arg(short, long)]
+        archive: String,
+
+        /// Target model to replay against (same formats as jailbreak --target).
+        #[arg(short, long)]
+        target: String,
+
+        /// LLM judge for scoring (e.g., openai:gpt-5.4-mini).
+        /// Defaults to heuristic if not specified.
+        #[arg(long)]
+        judge: Option<String>,
+
+        /// Maximum concurrent API calls (default: 5).
+        #[arg(long, default_value = "5")]
+        concurrency: usize,
+
+        /// Output file for transfer results.
+        #[arg(short, long, default_value = "transfer_results.json")]
+        output: String,
+    },
 }
 
 /// Parse target string into an LLMTarget.
@@ -869,6 +894,179 @@ fn analyze_results(input: &str) -> Result<()> {
     Ok(())
 }
 
+/// Per-category transfer statistics.
+#[derive(Debug, Serialize, Deserialize)]
+struct CategoryTransfer {
+    total: usize,
+    transferred: usize,
+    rate: f64,
+    avg_source_fitness: f64,
+    avg_replay_fitness: f64,
+}
+
+/// Result of replaying a single archive entry against a different target.
+#[derive(Debug, Serialize, Deserialize)]
+struct TransferEntry {
+    cell: Vec<f64>,
+    strategy: String,
+    encoding: String,
+    source_fitness: f64,
+    replay_fitness: f64,
+    transferred: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    seed_category: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    judge_result: Option<SerializableJudgeResult>,
+}
+
+/// Full transfer replay results.
+#[derive(Debug, Serialize, Deserialize)]
+struct TransferResults {
+    source_target: String,
+    replay_target: String,
+    source_archive_entries: usize,
+    overall_success_rate: f64,
+    total_transferred: usize,
+    category_transfer: std::collections::BTreeMap<String, CategoryTransfer>,
+    entries: Vec<TransferEntry>,
+}
+
+/// Run transfer replay: load archive, re-evaluate against a different target.
+fn run_transfer_replay(
+    archive_path: &str,
+    target_str: &str,
+    judge_str: Option<&str>,
+    concurrency: usize,
+    output: &str,
+) -> Result<()> {
+    println!();
+    println!("  Red Queen - Transfer Replay");
+    println!("  ===========================");
+    println!();
+
+    let content = std::fs::read_to_string(archive_path)
+        .with_context(|| format!("Failed to read archive: {}", archive_path))?;
+    let archive: ExportedArchive = serde_json::from_str(&content)
+        .with_context(|| format!("Failed to parse archive: {}", archive_path))?;
+
+    println!("  Source:       {}", archive.target);
+    println!("  Archive:      {} entries from {} ({}/{})",
+        archive.entries.len(), archive_path, archive.filled_cells, archive.total_cells);
+    println!("  Replay on:    {}", target_str);
+
+    let target = parse_target(target_str)?;
+
+    let judge: Arc<dyn red_queen_llm::judge::Judge> = if let Some(judge_model_str) = judge_str {
+        let judge_model = parse_target(judge_model_str)?;
+        println!("  Judge:        {} (LLM)", judge_model_str);
+        Arc::new(red_queen_llm::judge::LLMJudge::new(judge_model))
+    } else {
+        println!("  Judge:        Heuristic (fast)");
+        Arc::new(red_queen_llm::judge::HeuristicJudge::new())
+    };
+
+    println!("  Concurrency:  {}", concurrency);
+    println!();
+    println!("  Replaying {} prompts...", archive.entries.len());
+
+    let rt = tokio::runtime::Runtime::new()?;
+    let transfer_entries: Vec<TransferEntry> = rt.block_on(async {
+        use futures::stream::{self, StreamExt};
+
+        let results: Vec<TransferEntry> = stream::iter(&archive.entries)
+            .map(|entry| {
+                let target = target.clone();
+                let judge = judge.clone();
+                async move {
+                    let response = target.query(&entry.prompt).await.unwrap_or_default();
+                    let judge_result = judge
+                        .evaluate(&entry.prompt, &response)
+                        .await
+                        .unwrap_or_default();
+
+                    let replay_fitness = judge_result.score;
+                    let transferred = replay_fitness > 0.0 && !judge_result.refused;
+
+                    TransferEntry {
+                        cell: entry.cell.clone(),
+                        strategy: entry.strategy.clone(),
+                        encoding: entry.encoding.clone(),
+                        source_fitness: entry.fitness,
+                        replay_fitness,
+                        transferred,
+                        seed_category: entry.seed_category.clone(),
+                        judge_result: Some(SerializableJudgeResult::from(&judge_result)),
+                    }
+                }
+            })
+            .buffer_unordered(concurrency)
+            .collect()
+            .await;
+        results
+    });
+
+    let total = transfer_entries.len();
+    let transferred_count = transfer_entries.iter().filter(|e| e.transferred).count();
+    let overall_rate = if total > 0 { transferred_count as f64 / total as f64 } else { 0.0 };
+
+    // Aggregate by category
+    let mut category_map: std::collections::BTreeMap<String, (usize, usize, f64, f64)> =
+        std::collections::BTreeMap::new();
+    for entry in &transfer_entries {
+        let cat = entry.seed_category.clone().unwrap_or_else(|| "unknown".to_string());
+        let (total, transferred, src_sum, replay_sum) =
+            category_map.entry(cat).or_insert((0, 0, 0.0, 0.0));
+        *total += 1;
+        if entry.transferred { *transferred += 1; }
+        *src_sum += entry.source_fitness;
+        *replay_sum += entry.replay_fitness;
+    }
+
+    let category_transfer: std::collections::BTreeMap<String, CategoryTransfer> = category_map
+        .into_iter()
+        .map(|(cat, (total, transferred, src_sum, replay_sum))| {
+            let rate = if total > 0 { transferred as f64 / total as f64 } else { 0.0 };
+            (cat, CategoryTransfer {
+                total,
+                transferred,
+                rate,
+                avg_source_fitness: if total > 0 { src_sum / total as f64 } else { 0.0 },
+                avg_replay_fitness: if total > 0 { replay_sum / total as f64 } else { 0.0 },
+            })
+        })
+        .collect();
+
+    println!();
+    println!("  Transfer Results");
+    println!("  ----------------");
+    println!("  Overall:      {}/{} transferred ({:.1}%)", transferred_count, total, overall_rate * 100.0);
+    println!();
+    println!("  Per-category:");
+    for (cat, ct) in &category_transfer {
+        println!("    {:<32} {}/{} ({:.1}%)  src_avg={:.2} → replay_avg={:.2}",
+            cat, ct.transferred, ct.total, ct.rate * 100.0, ct.avg_source_fitness, ct.avg_replay_fitness);
+    }
+    println!();
+
+    let results = TransferResults {
+        source_target: archive.target,
+        replay_target: target_str.to_string(),
+        source_archive_entries: total,
+        overall_success_rate: overall_rate,
+        total_transferred: transferred_count,
+        category_transfer,
+        entries: transfer_entries,
+    };
+
+    let json = serde_json::to_string_pretty(&results)?;
+    let mut file = File::create(output)?;
+    file.write_all(json.as_bytes())?;
+    println!("  Results saved to: {}", output);
+    println!();
+
+    Ok(())
+}
+
 fn main() -> Result<()> {
     // Initialize logging
     tracing_subscriber::fmt()
@@ -923,6 +1121,21 @@ fn main() -> Result<()> {
                     novelty_k,
                     concurrency,
                     seeds.as_deref(),
+                )?;
+            }
+            LlmCommands::Transfer {
+                archive,
+                target,
+                judge,
+                concurrency,
+                output,
+            } => {
+                run_transfer_replay(
+                    &archive,
+                    &target,
+                    judge.as_deref(),
+                    concurrency,
+                    &output,
                 )?;
             }
         },
