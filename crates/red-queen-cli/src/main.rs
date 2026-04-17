@@ -281,6 +281,17 @@ struct AttackResult {
     judge_result: Option<SerializableJudgeResult>,
 }
 
+/// Per-category summary statistics.
+#[derive(Debug, Serialize, Deserialize)]
+struct CategorySummary {
+    total_attacks: usize,
+    successful_attacks: usize,
+    success_rate: f64,
+    best_fitness: f64,
+    best_strategy: String,
+    avg_fitness: f64,
+}
+
 /// Full results from an evolution run.
 #[derive(Debug, Serialize, Deserialize)]
 struct EvolutionResults {
@@ -289,6 +300,8 @@ struct EvolutionResults {
     population_size: usize,
     best_attack: AttackResult,
     top_attacks: Vec<AttackResult>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    category_summary: Option<std::collections::BTreeMap<String, CategorySummary>>,
     config: RunConfig,
 }
 
@@ -806,6 +819,48 @@ fn run_jailbreak_evolution(
     }
     println!();
 
+    // Compute per-category summary from archive entries (when seeds are used)
+    let category_summary = if !archive_entries.is_empty() {
+        let mut cat_data: std::collections::BTreeMap<String, (usize, usize, f64, f64, String)> =
+            std::collections::BTreeMap::new();
+        for entry in &archive_entries {
+            let cat = entry.seed_category.clone().unwrap_or_else(|| "unknown".to_string());
+            let (total, success, fitness_sum, best_fit, best_strat) =
+                cat_data.entry(cat).or_insert((0, 0, 0.0, 0.0, String::new()));
+            *total += 1;
+            *fitness_sum += entry.fitness;
+            if entry.fitness > 0.0 { *success += 1; }
+            if entry.fitness > *best_fit {
+                *best_fit = entry.fitness;
+                *best_strat = entry.strategy.clone();
+            }
+        }
+        let summary: std::collections::BTreeMap<String, CategorySummary> = cat_data
+            .into_iter()
+            .map(|(cat, (total, success, fitness_sum, best_fit, best_strat))| {
+                (cat, CategorySummary {
+                    total_attacks: total,
+                    successful_attacks: success,
+                    success_rate: if total > 0 { success as f64 / total as f64 } else { 0.0 },
+                    best_fitness: best_fit,
+                    best_strategy: best_strat,
+                    avg_fitness: if total > 0 { fitness_sum / total as f64 } else { 0.0 },
+                })
+            })
+            .collect();
+
+        println!("  Category Summary:");
+        for (cat, cs) in &summary {
+            println!("    {:<32} {}/{} ({:.1}%)  best={:.2} ({})",
+                cat, cs.successful_attacks, cs.total_attacks, cs.success_rate * 100.0,
+                cs.best_fitness, cs.best_strategy);
+        }
+        println!();
+        Some(summary)
+    } else {
+        None
+    };
+
     // Build results structure
     let results = EvolutionResults {
         target: target_str.to_string(),
@@ -813,6 +868,7 @@ fn run_jailbreak_evolution(
         population_size: population,
         best_attack: genome_to_result(&best_genome, best_fitness, 0, None, None),
         top_attacks,
+        category_summary,
         config: RunConfig {
             mutation_rate,
             crossover_rate,
@@ -1334,6 +1390,7 @@ mod tests {
                 judge_result: None,
             },
             top_attacks: vec![],
+            category_summary: None,
             config: RunConfig {
                 mutation_rate: 0.3,
                 crossover_rate: 0.7,
@@ -1343,11 +1400,13 @@ mod tests {
         };
 
         let json = serde_json::to_string(&results).unwrap();
+        assert!(!json.contains("category_summary"));
         let parsed: EvolutionResults = serde_json::from_str(&json).unwrap();
 
         assert_eq!(parsed.target, "mock:comply");
         assert_eq!(parsed.generations, 10);
         assert_eq!(parsed.config.seed, Some(42));
+        assert!(parsed.category_summary.is_none());
     }
 
     #[test]
