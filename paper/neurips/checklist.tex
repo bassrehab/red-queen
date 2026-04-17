@@ -1,0 +1,178 @@
+% NeurIPS 2026 Paper Checklist
+% Mandatory — missing checklist results in desk rejection.
+
+\section*{NeurIPS Paper Checklist}
+
+\begin{enumerate}
+
+\item {\bf Claims}
+    \begin{enumerate}
+        \item Do the main claims made in the abstract and introduction
+              accurately reflect the paper's contributions and scope?
+    \answerYes{The abstract states two specific research questions
+    (cross-generational transfer and safety scaling) and the introduction
+    enumerates four concrete contributions, each tied to a results section.}
+    \end{enumerate}
+
+\item {\bf Limitations}
+    \begin{enumerate}
+        \item Does the paper discuss the limitations of the work performed
+              by the authors?
+    \answerYes{Section~\ref{sec:discussion} includes a dedicated Limitations
+    paragraph covering: small N for scaling, single model family,
+    HarmBench coverage bounds, LLM judge bias, and evolutionary probe
+    coverage limitations.}
+    \end{enumerate}
+
+\item {\bf Theory Assumptions and Proofs}
+    \begin{enumerate}
+        \item For each theoretical result, does the paper provide the full
+              set of assumptions and a complete (or correct) proof?
+    \answerNA{This is an empirical paper with no theoretical results.}
+    \end{enumerate}
+
+\item {\bf Experimental Result Reproducibility}
+    \begin{enumerate}
+        \item Does the paper fully disclose all the information needed to
+              reproduce the main experimental results of the paper to the
+              extent that it affects the main claims and/or conclusions of
+              the paper (regardless of whether the code and data are
+              provided or not)?
+    \answerYes{Section~\ref{sec:setup} specifies all models, hyperparameters
+    (grid dimensions, batch size, generations, concurrency), seed dataset
+    (HarmBench 400 behaviors), judge model (GPT-5.4-mini), serving
+    infrastructure (vLLM 0.19.0, bf16), and hardware (H200 NVL). The
+    transfer replay protocol is fully described in
+    Section~\ref{sec:method:transfer}.}
+    \end{enumerate}
+
+\item {\bf Open access to data and code}
+    \begin{enumerate}
+        \item Does the paper provide open access to the data and code, with
+              sufficient instructions to faithfully reproduce the main
+              experimental results, as described in supplemental material?
+    \answerYes{Anonymous code repository is provided as supplemental
+    material, including the full evolution framework (Rust), analysis
+    scripts (Python), orchestration scripts, and instructions for
+    reproducing all experiments. Seed behaviors are from the public
+    HarmBench dataset. Experiment result JSONs are included.}
+    \end{enumerate}
+
+\item {\bf Experimental Setting/Details}
+    \begin{enumerate}
+        \item Does the paper specify all the training and test details
+              (e.g., data splits, hyperparameters, how they were chosen,
+              type of optimizer, etc.) necessary to understand the results?
+    \answerYes{All MAP-Elites hyperparameters are specified in
+    Section~\ref{sec:setup}. No training is performed --- we evaluate
+    existing models. Evolution configuration: 200 generations,
+    batch size 50, $6 \times 6 \times 8$ MAP-Elites grid, mutation
+    rate 0.3, crossover rate 0.7.}
+    \end{enumerate}
+
+\item {\bf Experiment Statistical Significance}
+    \begin{enumerate}
+        \item Does the paper report error bars suitably and correctly
+              defined or other appropriate information about the statistical
+              significance of the experiments?
+    \answerNo{Evolution is stochastic but we report single runs per model
+    due to compute constraints. We acknowledge this limitation and note
+    that the transfer matrix captures cross-model variance. Future work
+    should include multiple seeds per model.}
+    \end{enumerate}
+
+\item {\bf Experiments Compute Resources}
+    \begin{enumerate}
+        \item For each experiment, does the paper provide sufficient
+              information on the computer resources (type of compute
+              workers, memory, time for each experiment, etc.) needed to
+              reproduce the experiments?
+    \answerYes{Section~\ref{sec:setup} reports: NVIDIA H200 NVL (141\,GB),
+    vLLM 0.19.0, total GPU time $\sim$36 hours, total cost $\sim$\$122.
+    Frontier models via proprietary APIs.}
+    \end{enumerate}
+
+\item {\bf Code Of Ethics}
+    \begin{enumerate}
+        \item Does the research conducted in the paper conform, in every
+              respect, with the NeurIPS Code of Ethics?
+    \answerYes{This work studies LLM safety alignment to improve defenses.
+    We follow responsible disclosure practices: we do not release
+    specific jailbreak prompts that could enable misuse, only aggregate
+    statistics and methodology. The goal is to help model developers
+    identify and fix vulnerabilities.}
+    \end{enumerate}
+
+\item {\bf Broader Impacts}
+    \begin{enumerate}
+        \item Does the paper discuss both potential positive societal
+              impacts and negative societal impacts of the work performed?
+    \answerYes{Positive: enables systematic safety evaluation across model
+    generations, helping developers prioritize alignment work. Negative:
+    methodology could in principle be used to find and exploit
+    vulnerabilities. We mitigate this by not publishing specific attack
+    prompts and by framing the work as a defensive evaluation tool.}
+    \end{enumerate}
+
+\item {\bf Safeguards}
+    \begin{enumerate}
+        \item Does the paper describe safeguards that have been put in
+              place for responsible release of data or models that have a
+              high risk for misuse (e.g., pretrained language models,
+              image generators, or scraped datasets)?
+    \answerYes{We release aggregate statistics (transfer rates, ASR per
+    category) and the evolution framework, but not the specific attack
+    prompts or model responses from our experiments. The seed behaviors
+    come from the publicly available HarmBench dataset.}
+    \end{enumerate}
+
+\item {\bf Licenses for existing assets}
+    \begin{enumerate}
+        \item Are the creators or original owners of assets (e.g., code,
+              data, models), used in the paper, properly credited and are
+              the license and terms of use explicitly mentioned and properly
+              respected?
+    \answerYes{HarmBench is cited and used under its original license.
+    Gemma models are used under Google's Gemma license. Proprietary
+    models are accessed via their official APIs under standard terms
+    of service.}
+    \end{enumerate}
+
+\item {\bf New Assets}
+    \begin{enumerate}
+        \item Are new assets introduced in the paper well documented and
+              is the documentation provided alongside the assets?
+    \answerYes{The evolution framework (Red Queen) is documented with
+    README, CLI help text, and reproduction instructions. Analysis
+    scripts include docstrings and usage examples.}
+    \end{enumerate}
+
+\item {\bf Crowdsourcing and Research with Human Subjects}
+    \begin{enumerate}
+        \item For crowdsourcing experiments and research with human
+              subjects, does the paper include the full text of instructions
+              given to participants and screenshots, if applicable, as well
+              as details about compensation?
+    \answerNA{No human subjects or crowdsourcing.}
+    \end{enumerate}
+
+\item {\bf Institutional Review Board (IRB) Approvals or Equivalent for
+         Research with Human Subjects}
+    \begin{enumerate}
+        \item Does the paper describe potential risks incurred by study
+              participants, whether combative or non-combative to the
+              subjects, and does it meet the necessary IRB criteria?
+    \answerNA{No human subjects.}
+    \end{enumerate}
+
+\item {\bf Declaration of LLM usage}
+    \begin{enumerate}
+        \item Does the paper describe the usage of LLMs in the research
+              and/or writing process?
+    \answerYes{LLMs are used in two capacities: (1)~as evaluation targets
+    (the models being probed for safety), and (2)~as an automated judge
+    (GPT-5.4-mini scoring target responses). Claude Code was used to
+    assist with framework development and analysis scripts.}
+    \end{enumerate}
+
+\end{enumerate}
