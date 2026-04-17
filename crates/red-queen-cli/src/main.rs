@@ -56,6 +56,7 @@ enum LlmCommands {
         ///   anthropic:claude-sonnet-4-20250514 - Anthropic Claude
         ///   gemini:gemini-2.0-flash  - Google Gemini
         ///   huggingface:google/gemma-7b-it - HuggingFace router (OpenAI-compatible)
+        ///   openai-compat:model@http://host:port - Any OpenAI-compatible endpoint (vLLM, TGI, etc.)
         ///   ollama:llama3.2          - Local Ollama model
         ///   mock:refuse              - Mock target (always refuses)
         ///   mock:comply              - Mock target (always complies)
@@ -148,14 +149,34 @@ enum LlmCommands {
 
 /// Parse target string into an LLMTarget.
 fn parse_target(target_str: &str) -> Result<Arc<dyn LLMTarget>> {
-    // Handle huggingface: first — HF model IDs may contain a ':' provider suffix
-    // (e.g. "meta-llama/Llama-3-8B:novita"), so a naive split(':') would fail.
+    // Handle prefixes that contain URLs or complex model IDs with colons
+    // before falling through to the simple split(':') path.
+
     if let Some(model) = target_str.strip_prefix("huggingface:") {
         if model.is_empty() {
             return Err(anyhow!("Empty HuggingFace model ID in target '{}'", target_str));
         }
         let target = OpenAITarget::huggingface_from_env(model)
             .context("Failed to create HuggingFace target. Is HUGGINGFACE_TOKEN_QAA set?")?;
+        return Ok(Arc::new(target));
+    }
+
+    // openai-compat:MODEL@BASE_URL — any OpenAI-compatible endpoint (vLLM, TGI, etc.).
+    // API key read from OPENAI_COMPAT_API_KEY; defaults to "none" (most local endpoints need no auth).
+    if let Some(rest) = target_str.strip_prefix("openai-compat:") {
+        let (model, base_url) = rest.rsplit_once('@').ok_or_else(|| {
+            anyhow!(
+                "Invalid openai-compat target '{}'. Expected format: openai-compat:MODEL@BASE_URL",
+                target_str
+            )
+        })?;
+        if model.is_empty() || base_url.is_empty() {
+            return Err(anyhow!(
+                "Both model and base URL are required. Format: openai-compat:MODEL@BASE_URL"
+            ));
+        }
+        let api_key = std::env::var("OPENAI_COMPAT_API_KEY").unwrap_or_else(|_| "none".to_string());
+        let target = OpenAITarget::with_base_url(model, &api_key, base_url);
         return Ok(Arc::new(target));
     }
 
@@ -184,7 +205,7 @@ fn parse_target(target_str: &str) -> Result<Arc<dyn LLMTarget>> {
             Ok(Arc::new(target))
         }
         _ => Err(anyhow!(
-            "Unknown target: '{}'. Use 'openai:', 'anthropic:', 'gemini:', 'huggingface:', 'ollama:', or 'mock:'",
+            "Unknown target: '{}'. Use 'openai:', 'anthropic:', 'gemini:', 'huggingface:', 'openai-compat:', 'ollama:', or 'mock:'",
             target_str
         )),
     }
@@ -901,6 +922,29 @@ mod tests {
     fn test_parse_target_ollama() {
         let target = parse_target("ollama:llama3.2").unwrap();
         assert_eq!(target.name(), "llama3.2");
+    }
+
+    #[test]
+    fn test_parse_target_openai_compat() {
+        let target =
+            parse_target("openai-compat:google/gemma-7b-it@http://localhost:8000").unwrap();
+        assert_eq!(target.name(), "google/gemma-7b-it");
+
+        // Handles HTTPS with port
+        let target = parse_target(
+            "openai-compat:my-model@https://pod123-8000.proxy.runpod.net",
+        )
+        .unwrap();
+        assert_eq!(target.name(), "my-model");
+
+        // Missing @ separator
+        assert!(parse_target("openai-compat:model-without-url").is_err());
+
+        // Empty model
+        assert!(parse_target("openai-compat:@http://localhost:8000").is_err());
+
+        // Empty URL
+        assert!(parse_target("openai-compat:model@").is_err());
     }
 
     // Single test that exercises all huggingface: parser branches.
