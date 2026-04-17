@@ -267,6 +267,33 @@ struct EvolutionResults {
     config: RunConfig,
 }
 
+/// A single entry in an exported MAP-Elites archive.
+/// Contains everything needed for transfer replay against a different model.
+#[derive(Debug, Serialize, Deserialize)]
+struct ArchiveEntry {
+    /// Behavior-space cell coordinates (e.g. [strategy_bin, encoding_bin, category_bin]).
+    cell: Vec<f64>,
+    strategy: String,
+    encoding: String,
+    fitness: f64,
+    prompt: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    seed_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    seed_category: Option<String>,
+    birth_generation: usize,
+}
+
+/// Full exported archive for cross-model transfer replay.
+#[derive(Debug, Serialize, Deserialize)]
+struct ExportedArchive {
+    target: String,
+    generations: usize,
+    total_cells: usize,
+    filled_cells: usize,
+    entries: Vec<ArchiveEntry>,
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 struct RunConfig {
     mutation_rate: f64,
@@ -318,7 +345,7 @@ fn run_map_elites_evolution(
     concurrency: usize,
     has_seeds: bool,
     pb: &ProgressBar,
-) -> Result<(LLMAttackGenome, f64, Vec<AttackResult>, Vec<EvaluationRecord>, Option<CoverageInfo>)> {
+) -> Result<(LLMAttackGenome, f64, Vec<AttackResult>, Vec<EvaluationRecord>, Option<CoverageInfo>, Vec<ArchiveEntry>)> {
     use red_queen_llm::genome::SEED_CATEGORY_COUNT;
 
     // Create behavior dimensions for LLM attacks:
@@ -423,7 +450,29 @@ fn run_map_elites_evolution(
         percentage: coverage.percentage() * 100.0,
     };
 
-    Ok((best_genome, best_fitness, top, records, Some(coverage_info)))
+    let archive_entries: Vec<ArchiveEntry> = archive
+        .get_all()
+        .iter()
+        .map(|ind| {
+            let behavior_values = ind
+                .behavior
+                .as_ref()
+                .map(|b| b.values.clone())
+                .unwrap_or_default();
+            ArchiveEntry {
+                cell: behavior_values,
+                strategy: format!("{:?}", ind.genome.primary_strategy),
+                encoding: format!("{:?}", ind.genome.encoding),
+                fitness: ind.fitness_value(),
+                prompt: ind.genome.to_prompt(),
+                seed_id: ind.genome.seed_id.clone(),
+                seed_category: ind.genome.seed_category.clone(),
+                birth_generation: ind.birth_generation,
+            }
+        })
+        .collect();
+
+    Ok((best_genome, best_fitness, top, records, Some(coverage_info), archive_entries))
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -540,7 +589,7 @@ fn run_jailbreak_evolution(
     println!();
 
     // Run evolution - choose algorithm based on flags
-    let (best_genome, best_fitness, top_attacks, stored_records, coverage_info) = if map_elites {
+    let (best_genome, best_fitness, top_attacks, stored_records, coverage_info, archive_entries) = if map_elites {
         // MAP-Elites quality-diversity evolution
         run_map_elites_evolution(
             target.clone(),
@@ -597,7 +646,7 @@ fn run_jailbreak_evolution(
             vec![]
         };
 
-        (best.genome.clone(), best_fitness_val, top, records, None)
+        (best.genome.clone(), best_fitness_val, top, records, None, vec![])
     } else if use_judge {
         // Standard evolution with judged fitness
         let selection = Tournament::new(tournament_size);
@@ -636,7 +685,7 @@ fn run_jailbreak_evolution(
             vec![]
         };
 
-        (best.genome.clone(), best_fitness_val, top, records, None)
+        (best.genome.clone(), best_fitness_val, top, records, None, vec![])
     } else {
         // Standard evolution with simple heuristic fitness
         let selection = Tournament::new(tournament_size);
@@ -666,7 +715,7 @@ fn run_jailbreak_evolution(
             })
             .collect();
 
-        (best.genome.clone(), best_fitness_val, top, vec![], None)
+        (best.genome.clone(), best_fitness_val, top, vec![], None, vec![])
     };
     println!();
 
@@ -752,6 +801,22 @@ fn run_jailbreak_evolution(
     let mut file = File::create(output)?;
     file.write_all(json.as_bytes())?;
     println!("  Results saved to: {}", output);
+
+    // Export full MAP-Elites archive for transfer replay
+    if !archive_entries.is_empty() {
+        let archive_path = output.replace(".json", "_archive.json");
+        let exported = ExportedArchive {
+            target: target_str.to_string(),
+            generations,
+            total_cells: coverage_info.as_ref().map(|c| c.total).unwrap_or(0),
+            filled_cells: archive_entries.len(),
+            entries: archive_entries,
+        };
+        let archive_json = serde_json::to_string_pretty(&exported)?;
+        let mut archive_file = File::create(&archive_path)?;
+        archive_file.write_all(archive_json.as_bytes())?;
+        println!("  Archive saved to: {} ({} entries)", archive_path, exported.filled_cells);
+    }
     println!();
 
     Ok(())
