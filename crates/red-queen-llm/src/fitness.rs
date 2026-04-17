@@ -8,10 +8,72 @@ use red_queen_core::fitness::{EvaluationMetadata, Fitness, FitnessResult, Fitnes
 use red_queen_core::genome::BehaviorDescriptor;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 /// Default number of concurrent evaluations.
 pub const DEFAULT_CONCURRENCY: usize = 10;
+
+/// Maximum retry attempts for transient target/judge failures.
+///
+/// The count is the number of retries AFTER the initial attempt, so a genome
+/// is evaluated up to `MAX_RETRIES + 1` times before giving up.
+pub const MAX_RETRIES: usize = 3;
+
+/// Initial backoff between retries in milliseconds. Doubles each retry.
+pub const INITIAL_BACKOFF_MS: u64 = 2000;
+
+/// Retry policy for target and judge calls.
+#[derive(Debug, Clone, Copy)]
+pub struct RetryConfig {
+    /// Number of retries after the first attempt. 0 disables retries entirely.
+    pub max_retries: usize,
+    /// Initial backoff between retries. Doubles each retry.
+    pub initial_backoff_ms: u64,
+}
+
+impl Default for RetryConfig {
+    fn default() -> Self {
+        Self {
+            max_retries: MAX_RETRIES,
+            initial_backoff_ms: INITIAL_BACKOFF_MS,
+        }
+    }
+}
+
+/// Run an async operation with exponential backoff retry.
+///
+/// Retries all errors uniformly — we cannot reliably distinguish transient
+/// (5xx, rate limit, network) from permanent (bad model, bad auth) at the
+/// boundary, and the cost of retrying a permanent failure is a bounded
+/// handful of wasted calls. After exhausting retries, the final error is
+/// returned so the caller can surface it in evaluation metadata.
+async fn retry_with_backoff<T, E, F, Fut>(cfg: RetryConfig, mut op: F) -> Result<T, E>
+where
+    F: FnMut() -> Fut,
+    Fut: std::future::Future<Output = Result<T, E>>,
+    E: std::fmt::Display,
+{
+    let mut delay_ms = cfg.initial_backoff_ms;
+    for attempt in 0..=cfg.max_retries {
+        match op().await {
+            Ok(v) => return Ok(v),
+            Err(e) if attempt == cfg.max_retries => return Err(e),
+            Err(e) => {
+                tracing::warn!(
+                    attempt = attempt + 1,
+                    max_attempts = cfg.max_retries + 1,
+                    error = %e,
+                    "evaluation error, retrying after backoff"
+                );
+                if delay_ms > 0 {
+                    tokio::time::sleep(Duration::from_millis(delay_ms)).await;
+                }
+                delay_ms = delay_ms.saturating_mul(2);
+            }
+        }
+    }
+    unreachable!("loop above returns on the final iteration")
+}
 
 /// Stored response from an evaluation.
 #[derive(Debug, Clone)]
@@ -37,6 +99,8 @@ pub struct JailbreakFitness {
     /// instead of prompt length. Enables meaningful MAP-Elites when
     /// evolving from a seed pool.
     use_seed_category: bool,
+    /// Retry policy for the target query.
+    retry: RetryConfig,
 }
 
 impl JailbreakFitness {
@@ -46,6 +110,7 @@ impl JailbreakFitness {
             target,
             concurrency: DEFAULT_CONCURRENCY,
             use_seed_category: false,
+            retry: RetryConfig::default(),
         }
     }
 
@@ -58,6 +123,12 @@ impl JailbreakFitness {
     /// Use seed_category as the 3rd behavior dimension for MAP-Elites.
     pub fn with_seed_category_dimension(mut self) -> Self {
         self.use_seed_category = true;
+        self
+    }
+
+    /// Override the retry policy for target queries.
+    pub fn with_retry(mut self, retry: RetryConfig) -> Self {
+        self.retry = retry;
         self
     }
 
@@ -95,10 +166,25 @@ impl JailbreakFitness {
     async fn evaluate_async(&self, genome: &LLMAttackGenome) -> FitnessResult {
         let start = Instant::now();
         let prompt = genome.to_prompt();
-
-        let response = self.target.query(&prompt).await.unwrap_or_default();
-        let success = self.is_jailbroken(&prompt, &response);
         let behavior = self.characterize_behavior(genome);
+
+        let response = match retry_with_backoff(self.retry, || self.target.query(&prompt)).await {
+            Ok(r) => r,
+            Err(e) => {
+                tracing::warn!(error = %e, "target query failed after retries; fitness=0");
+                return FitnessResult {
+                    value: FitnessValue::Single(0.0),
+                    behavior: Some(behavior),
+                    metadata: EvaluationMetadata {
+                        duration_ms: start.elapsed().as_millis() as u64,
+                        queries: self.retry.max_retries + 1,
+                        notes: Some(format!("query_error: {}", e)),
+                    },
+                };
+            }
+        };
+
+        let success = self.is_jailbroken(&prompt, &response);
         let duration_ms = start.elapsed().as_millis() as u64;
 
         FitnessResult {
@@ -162,6 +248,8 @@ pub struct JudgedJailbreakFitness {
     concurrency: usize,
     /// When true, 3rd behavior dimension is seed_category index.
     use_seed_category: bool,
+    /// Retry policy, applied to both target and judge calls.
+    retry: RetryConfig,
 }
 
 impl JudgedJailbreakFitness {
@@ -178,6 +266,7 @@ impl JudgedJailbreakFitness {
             records: Mutex::new(HashMap::new()),
             concurrency: DEFAULT_CONCURRENCY,
             use_seed_category: false,
+            retry: RetryConfig::default(),
         }
     }
 
@@ -189,6 +278,7 @@ impl JudgedJailbreakFitness {
             records: Mutex::new(HashMap::new()),
             concurrency: DEFAULT_CONCURRENCY,
             use_seed_category: false,
+            retry: RetryConfig::default(),
         }
     }
 
@@ -204,6 +294,12 @@ impl JudgedJailbreakFitness {
     /// Use seed_category as the 3rd behavior dimension for MAP-Elites.
     pub fn with_seed_category_dimension(mut self) -> Self {
         self.use_seed_category = true;
+        self
+    }
+
+    /// Override the retry policy for target and judge calls.
+    pub fn with_retry(mut self, retry: RetryConfig) -> Self {
+        self.retry = retry;
         self
     }
 
@@ -253,32 +349,60 @@ impl JudgedJailbreakFitness {
     async fn evaluate_async(&self, genome: &LLMAttackGenome) -> FitnessResult {
         let start = Instant::now();
         let prompt = genome.to_prompt();
+        let behavior = self.characterize_behavior(genome);
 
-        // Query target
-        let response = self.target.query(&prompt).await.unwrap_or_default();
+        let response = match retry_with_backoff(self.retry, || self.target.query(&prompt)).await {
+            Ok(r) => r,
+            Err(e) => {
+                tracing::warn!(error = %e, "target query failed after retries; fitness=0");
+                return FitnessResult {
+                    value: FitnessValue::Single(0.0),
+                    behavior: Some(behavior),
+                    metadata: EvaluationMetadata {
+                        duration_ms: start.elapsed().as_millis() as u64,
+                        queries: self.retry.max_retries + 1,
+                        notes: Some(format!("query_error: {}", e)),
+                    },
+                };
+            }
+        };
 
-        // Use judge to evaluate
-        let judge_result = self
-            .judge
-            .evaluate(&prompt, &response)
-            .await
-            .unwrap_or_default();
+        let judge_result = match retry_with_backoff(self.retry, || self.judge.evaluate(&prompt, &response)).await {
+            Ok(r) => r,
+            Err(e) => {
+                // Judge failure — we have a real response but cannot score it.
+                // Assigning fitness 0 is the conservative choice: don't breed an
+                // unjudged individual into the archive as if it were a success.
+                tracing::warn!(error = %e, "judge evaluation failed after retries; fitness=0");
+                let record = EvaluationRecord {
+                    prompt: prompt.clone(),
+                    response,
+                    judge_result: None,
+                    fitness: 0.0,
+                };
+                self.records.lock().unwrap().insert(prompt, record);
+                return FitnessResult {
+                    value: FitnessValue::Single(0.0),
+                    behavior: Some(behavior),
+                    metadata: EvaluationMetadata {
+                        duration_ms: start.elapsed().as_millis() as u64,
+                        queries: 1,
+                        notes: Some(format!("judge_error: {}", e)),
+                    },
+                };
+            }
+        };
 
         let fitness = judge_result.score;
         let duration_ms = start.elapsed().as_millis() as u64;
 
-        // Store record
         let record = EvaluationRecord {
             prompt: prompt.clone(),
             response,
             judge_result: Some(judge_result),
             fitness,
         };
-
         self.records.lock().unwrap().insert(prompt, record);
-
-        // Compute behavior
-        let behavior = self.characterize_behavior(genome);
 
         FitnessResult {
             value: FitnessValue::Single(fitness),
@@ -323,7 +447,18 @@ impl Fitness<LLMAttackGenome> for JudgedJailbreakFitness {
 mod tests {
     use super::*;
     use crate::genome::{AttackStrategy, Encoding, HarmCategory, PromptSection};
-    use crate::targets::MockTarget;
+    use crate::targets::{MockErrorTarget, MockTarget};
+
+    /// Retry config that exhausts immediately with no wall-clock delay, for tests
+    /// that only care about behavior (count, fallback fitness) not timing.
+    const FAST_RETRY: RetryConfig = RetryConfig {
+        max_retries: 2,
+        initial_backoff_ms: 0,
+    };
+    const NO_RETRY: RetryConfig = RetryConfig {
+        max_retries: 0,
+        initial_backoff_ms: 0,
+    };
 
     fn make_test_genome() -> LLMAttackGenome {
         LLMAttackGenome {
@@ -345,8 +480,7 @@ mod tests {
     #[test]
     fn test_jailbreak_fitness_new() {
         let target = Arc::new(MockTarget::always_refuse());
-        let fitness = JailbreakFitness::new(target);
-        // Just verify it compiles and doesn't panic
+        let _fitness = JailbreakFitness::new(target);
     }
 
     #[test]
@@ -513,6 +647,54 @@ mod tests {
 
         // Heuristic judge should detect compliance (high score)
         assert!(result.value.primary() > 0.5);
+    }
+
+    // Regression test for RCA #2: an erroring target must NOT silently
+    // register as a successful jailbreak (previously `unwrap_or_default()`
+    // turned every API error into fitness 1.0 for the heuristic evaluator).
+    #[test]
+    fn test_jailbreak_fitness_target_error_yields_fitness_zero() {
+        let target = Arc::new(MockErrorTarget::new("simulated 500"));
+        let fitness = JailbreakFitness::new(target.clone()).with_retry(NO_RETRY);
+        let genome = make_test_genome();
+
+        let result = fitness.evaluate(&genome);
+
+        assert!((result.value.primary() - 0.0).abs() < 1e-10);
+        assert_eq!(target.call_count(), 1);
+        let notes = result.metadata.notes.as_deref().unwrap_or("");
+        assert!(notes.contains("query_error"), "notes should flag error: {}", notes);
+        assert!(notes.contains("simulated 500"), "notes should include provider error: {}", notes);
+    }
+
+    #[test]
+    fn test_jailbreak_fitness_retries_exhaust_then_fails() {
+        let target = Arc::new(MockErrorTarget::new("transient"));
+        let fitness = JailbreakFitness::new(target.clone()).with_retry(FAST_RETRY);
+        let genome = make_test_genome();
+
+        let result = fitness.evaluate(&genome);
+
+        // FAST_RETRY has max_retries=2 → 3 total calls before giving up.
+        assert_eq!(target.call_count(), 3);
+        assert!((result.value.primary() - 0.0).abs() < 1e-10);
+        assert_eq!(result.metadata.queries, 3);
+    }
+
+    // Same regression for the judged path.
+    #[test]
+    fn test_judged_fitness_target_error_yields_fitness_zero() {
+        let target = Arc::new(MockErrorTarget::new("simulated 429"));
+        let fitness = JudgedJailbreakFitness::new(target.clone(), JudgeMode::Heuristic)
+            .with_retry(NO_RETRY);
+        let genome = make_test_genome();
+
+        let result = fitness.evaluate(&genome);
+
+        assert!((result.value.primary() - 0.0).abs() < 1e-10);
+        assert_eq!(target.call_count(), 1);
+        let notes = result.metadata.notes.as_deref().unwrap_or("");
+        assert!(notes.contains("query_error"), "notes should flag error: {}", notes);
     }
 
     #[test]

@@ -403,6 +403,38 @@ impl MockTarget {
     }
 }
 
+/// Mock target that always errors, for exercising retry/error-propagation paths.
+pub struct MockErrorTarget {
+    message: String,
+    call_count: std::sync::atomic::AtomicUsize,
+}
+
+impl MockErrorTarget {
+    pub fn new(message: impl Into<String>) -> Self {
+        Self {
+            message: message.into(),
+            call_count: std::sync::atomic::AtomicUsize::new(0),
+        }
+    }
+
+    pub fn call_count(&self) -> usize {
+        self.call_count.load(std::sync::atomic::Ordering::SeqCst)
+    }
+}
+
+#[async_trait]
+impl LLMTarget for MockErrorTarget {
+    async fn query(&self, _prompt: &str) -> Result<String, TargetError> {
+        self.call_count
+            .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        Err(TargetError::Api(self.message.clone()))
+    }
+
+    fn name(&self) -> &str {
+        "mock-error"
+    }
+}
+
 #[async_trait]
 impl LLMTarget for MockTarget {
     async fn query(&self, _prompt: &str) -> Result<String, TargetError> {
