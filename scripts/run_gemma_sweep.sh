@@ -77,8 +77,10 @@ kill_tunnel() {
 
 start_tunnel() {
   kill_tunnel
-  ssh $SSH_OPTS -L ${LOCAL_TUNNEL_PORT}:localhost:${VLLM_PORT} -fN "$SSH_HOST"
-  log "SSH tunnel active on localhost:$LOCAL_TUNNEL_PORT"
+  ssh $SSH_OPTS -o ServerAliveInterval=60 -o ServerAliveCountMax=5 \
+    -o ExitOnForwardFailure=yes \
+    -L ${LOCAL_TUNNEL_PORT}:localhost:${VLLM_PORT} -fN "$SSH_HOST"
+  log "SSH tunnel active on localhost:$LOCAL_TUNNEL_PORT (keepalive=60s)"
 }
 
 wait_for_vllm() {
