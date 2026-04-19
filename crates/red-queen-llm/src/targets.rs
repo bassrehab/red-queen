@@ -1,7 +1,18 @@
 //! Target adapters for LLM APIs.
 
 use async_trait::async_trait;
+use std::time::Duration;
 use thiserror::Error;
+
+/// Build an HTTP client with sane timeouts.
+/// Without these, a dead tunnel causes requests to hang forever.
+fn http_client() -> reqwest::Client {
+    reqwest::Client::builder()
+        .timeout(Duration::from_secs(120))
+        .connect_timeout(Duration::from_secs(10))
+        .build()
+        .expect("failed to build HTTP client")
+}
 
 /// Error type for target operations.
 #[derive(Error, Debug)]
@@ -39,7 +50,7 @@ impl OpenAITarget {
     /// Create a new OpenAI target.
     pub fn new(model: &str, api_key: &str) -> Self {
         Self {
-            client: reqwest::Client::new(),
+            client: http_client(),
             model: model.to_string(),
             api_key: api_key.to_string(),
             base_url: "https://api.openai.com".to_string(),
@@ -49,7 +60,7 @@ impl OpenAITarget {
     /// Create with a custom base URL (for OpenAI-compatible APIs).
     pub fn with_base_url(model: &str, api_key: &str, base_url: &str) -> Self {
         Self {
-            client: reqwest::Client::new(),
+            client: http_client(),
             model: model.to_string(),
             api_key: api_key.to_string(),
             base_url: base_url.trim_end_matches('/').to_string(),
@@ -154,7 +165,7 @@ impl AnthropicTarget {
     /// Create a new Anthropic target.
     pub fn new(model: &str, api_key: &str) -> Self {
         Self {
-            client: reqwest::Client::new(),
+            client: http_client(),
             model: model.to_string(),
             api_key: api_key.to_string(),
         }
@@ -229,7 +240,7 @@ impl GeminiTarget {
     /// Create a new Gemini target.
     pub fn new(model: &str, api_key: &str) -> Self {
         Self {
-            client: reqwest::Client::new(),
+            client: http_client(),
             model: model.to_string(),
             api_key: api_key.to_string(),
         }
@@ -320,7 +331,7 @@ impl OllamaTarget {
     /// Create with custom URL.
     pub fn with_url(model: &str, base_url: &str) -> Self {
         Self {
-            client: reqwest::Client::new(),
+            client: http_client(),
             model: model.to_string(),
             base_url: base_url.trim_end_matches('/').to_string(),
         }
