@@ -101,17 +101,18 @@ start_tunnels() {
 
 wait_for_vllm() {
   local model="$1"
-  local max_wait=300  # 5 minutes
+  local max_wait=600  # 10 minutes (31B model takes longer to load)
   local elapsed=0
 
   log "Waiting for vLLM to serve $model..."
   while [ $elapsed -lt $max_wait ]; do
-    if curl -sS "http://localhost:${LOCAL_TUNNEL_PORT}/v1/models" 2>/dev/null | grep -q "$model"; then
+    # Use subshell to avoid pipefail killing the wait loop
+    if (curl -sS "http://localhost:${LOCAL_TUNNEL_PORT}/v1/models" 2>/dev/null | grep -q "$model") 2>/dev/null; then
       log "vLLM ready: $model"
       return 0
     fi
-    sleep 5
-    elapsed=$((elapsed + 5))
+    sleep 10
+    elapsed=$((elapsed + 10))
   done
 
   log "ERROR: vLLM did not start within ${max_wait}s"
@@ -123,15 +124,14 @@ swap_model() {
   log "Swapping vLLM to $model..."
 
   # Kill existing vLLM + orphaned EngineCore (holds GPU memory after pkill)
-  ssh_target 'pkill -f "vllm.entrypoints" 2>/dev/null || true; sleep 3; pkill -9 -f "vllm.entrypoints" 2>/dev/null || true; sleep 2; nvidia-smi --query-compute-apps=pid --format=csv,noheader 2>/dev/null | while read pid; do kill -9 $pid 2>/dev/null; done; sleep 2'
+  # Each command is || true to avoid set -e abort on empty process lists
+  ssh_target 'pkill -f "vllm.entrypoints" 2>/dev/null || true; sleep 3; pkill -9 -f "vllm.entrypoints" 2>/dev/null || true; sleep 2' || true
+  ssh_target 'for pid in $(nvidia-smi --query-compute-apps=pid --format=csv,noheader 2>/dev/null); do kill -9 "$pid" 2>/dev/null; done; sleep 2' || true
 
   # Start new model
   ssh_target "nohup /workspace/serve.sh '$model' $VLLM_PORT > /dev/null 2>&1 & disown; echo 'launched'"
 
-  # Ensure tunnel is alive (model swap may have disrupted it)
-  start_tunnels
-
-  # Wait for server
+  # Wait for server (tunnels are maintained by the watchdog)
   wait_for_vllm "$model"
 }
 
@@ -218,8 +218,13 @@ log ""
 
 mkdir -p "$OUTDIR"
 
-# Ensure tunnels are up
-start_tunnels
+# Ensure tunnels are up (skip if watchdog already manages them)
+if ! curl -sS -o /dev/null "http://localhost:${LOCAL_TUNNEL_PORT}/v1/models" 2>/dev/null || \
+   ! curl -sS -o /dev/null "http://localhost:${LOCAL_JUDGE_PORT}/v1/models" 2>/dev/null; then
+  start_tunnels
+else
+  log "Tunnels already active"
+fi
 
 if [ "$SKIP_EVOLUTION" = false ]; then
   log "=== Phase 1: Evolution runs (${#MODELS[@]} models × ${#RNG_SEEDS[@]} seeds) ==="
