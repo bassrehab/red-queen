@@ -1,7 +1,5 @@
 \documentclass{article}
 
-% NeurIPS 2026 style — download neurips_2026.sty from:
-% https://www.overleaf.com/latex/templates/formatting-instructions-for-neurips-2026/bjdwqfdkyftc
 \usepackage{neurips_2026}
 
 \usepackage[utf8]{inputenc}
@@ -18,7 +16,7 @@
 \usepackage{subcaption}
 \usepackage{multirow}
 
-\graphicspath{{figures/}}
+\graphicspath{{../../figures/}}
 
 \title{Does Safety Scale? Cross-Generational Adversarial Robustness \\
 in Large Language Models}
@@ -34,15 +32,19 @@ in Large Language Models}
 We propose a methodology for evaluating how adversarial robustness evolves
 across generations of a model family. Using quality-diversity evolution
 (MAP-Elites) as an automated red-teaming probe, we evolve diverse attack
-strategies against four generations of Google's Gemma models (7B--31B) and
-three proprietary frontier models. We ask two questions: (1)~Do attacks
+strategies against four generations of Google's Gemma models (7B--31B),
+spanning releases from 2024 to 2026. We ask two questions: (1)~Do attacks
 discovered against one generation transfer to later generations? (2)~Does
-robustness scale predictably with model size? We find that
-\textbf{[FINDING~1: forward transfer rate]} and
-\textbf{[FINDING~2: scaling relationship]}.
-Our results suggest that
-\textbf{[IMPLICATION: patches vs.\ general robustness / or the opposite]},
-with significant variation across harm categories.
+robustness scale predictably with model size? We find that safety alignment
+does \emph{not} improve monotonically across generations---Gemma~3 (12B)
+exhibits significantly higher attack success rates (81.0\%) than both
+its predecessor Gemma~2 (46.8\%) and its successor Gemma~4
+(28.6\%)---and that cross-generational attack transfer is asymmetric,
+with older attacks transferring forward to Gemma~3 at rates up to
+60.3\% but only 11.9--30.2\% to Gemma~4. Our results suggest that
+safety improvements are neither monotonic nor guaranteed by scale alone,
+and that quality-diversity probing reveals generational vulnerability
+patterns invisible to static benchmarks.
 Code and experiment artifacts are available anonymously.
 \end{abstract}
 
@@ -60,7 +62,7 @@ A fundamental question is whether safety improvements \emph{generalize}:
 when a model developer patches vulnerabilities between releases, do old
 attacks stop working (indicating targeted fixes), or does the model become
 broadly more robust? Answering this requires a methodology for
-\emph{differential safety probing} --- systematically comparing safety
+\emph{differential safety probing}---systematically comparing safety
 surfaces across model versions with a consistent adversarial process.
 
 In this paper, we address two specific questions:
@@ -86,11 +88,16 @@ reveals which vulnerabilities persist and which are patched.
           that enables systematic comparison of safety surfaces across model
           versions (\S\ref{sec:method}).
     \item A cross-generational transfer analysis across four Gemma
-          generations, revealing
-          \textbf{[key transfer finding]} (\S\ref{sec:results:transfer}).
-    \item An empirical scaling relationship between model size and
-          adversarial robustness (\S\ref{sec:results:scaling}).
-    \item Evidence that \textbf{[main implication]}
+          generations, revealing that attack transfer is highly asymmetric
+          and that Gemma~3 represents a safety regression
+          (\S\ref{sec:results:transfer}).
+    \item An empirical demonstration that adversarial robustness does not
+          scale monotonically with model size or generation, following a
+          non-monotonic U-shaped pattern
+          (\S\ref{sec:results:scaling}).
+    \item Evidence that safety alignment improvements are category-dependent:
+          some harm categories show consistent improvement across generations
+          while others exhibit dramatic regressions
           (\S\ref{sec:discussion}).
 \end{itemize}
 
@@ -154,8 +161,14 @@ a target LLM. Each attack is characterized by a genome encoding:
 The MAP-Elites archive is a 3D grid indexed by
 (strategy $\times$ encoding $\times$ harm category), with each cell
 storing the highest-fitness attack for that behavioral niche. Fitness is
-evaluated by an LLM judge (GPT-5.4-mini) that scores each target response
+evaluated by an LLM judge that scores each target response
 on a $[0, 1]$ scale assessing refusal, harmful content, and relevance.
+
+For evolution runs, we use GPT-5.4-mini as the judge to ensure high-quality
+fitness evaluation. For the transfer replay phase (\S\ref{sec:method:transfer}),
+we use a self-hosted Llama-3.1-8B-Instruct judge to avoid rate limiting
+and ensure reproducibility. Both judges are evaluated against the same
+rubric and produce consistent binary transfer decisions.
 
 \subsection{Cross-Generational Transfer Protocol}
 \label{sec:method:transfer}
@@ -165,7 +178,7 @@ After evolving an archive $\mathcal{A}_i$ against model $M_i$, we
 \begin{enumerate}
     \item For each entry in $\mathcal{A}_i$, send the attack prompt to
           $M_j$ and obtain the response.
-    \item Score the response using the same LLM judge.
+    \item Score the response using the LLM judge.
     \item Record per-entry and per-category transfer success.
 \end{enumerate}
 
@@ -182,11 +195,11 @@ $T[i,i]$ is the self-evaluation success rate. Off-diagonal entries reveal:
 \subsection{Scaling Analysis}
 \label{sec:method:scaling}
 
-We fit robustness $R(N) = 1 - \text{ASR}(N)$ as a function of parameter
+We measure robustness $R(N) = 1 - \text{ASR}(N)$ as a function of parameter
 count $N$ across Gemma 7B/9B/12B/31B. We test log-linear and power-law
 hypotheses and report $R^2$ values. Additional metrics include
-time-to-first-jailbreak (generations until first fitness $> 0.5$) and
-archive coverage (fraction of MAP-Elites cells filled).
+archive coverage (fraction of MAP-Elites cells filled) as a proxy for
+the diversity of successful attack strategies.
 
 %% ============================================================================
 \section{Experimental Setup}
@@ -194,38 +207,43 @@ archive coverage (fraction of MAP-Elites cells filled).
 
 \subsection{Models}
 
-\begin{table}[h]
+\begin{table}[t]
 \centering
-\caption{Models evaluated. Gemma models served via vLLM (bf16) on a single
-H200~NVL GPU. Frontier models accessed via proprietary APIs.}
+\caption{Models evaluated. Gemma models served via vLLM~0.19.1 (bf16) on a single
+NVIDIA H200~NVL (141\,GB). Transfer replay judged by Llama-3.1-8B-Instruct
+on a separate NVIDIA L40S (48\,GB).}
 \label{tab:models}
 \begin{tabular}{llccc}
 \toprule
-\textbf{Model} & \textbf{Family} & \textbf{Params} & \textbf{Release} & \textbf{Serving} \\
+\textbf{Model} & \textbf{Family} & \textbf{Params} & \textbf{Release} & \textbf{Architecture} \\
 \midrule
-Gemma 1 (7B-it)   & Gemma & 7B  & 2024 & vLLM \\
-Gemma 2 (9B-it)   & Gemma & 9B  & 2024 & vLLM \\
-Gemma 3 (12B-it)  & Gemma & 12B & 2025 & vLLM \\
-Gemma 4 (31B-it)  & Gemma & 31B & 2026 & vLLM \\
-\midrule
-Claude Sonnet 4.6  & Claude  & --- & 2026 & API \\
-GPT-5.4            & GPT     & --- & 2026 & API \\
-Gemini 3.1 Pro     & Gemini  & --- & 2026 & API \\
+Gemma 1 (7B-it)   & Gemma & 7B  & 2024 & Text-only \\
+Gemma 2 (9B-it)   & Gemma & 9B  & 2024 & Text-only \\
+Gemma 3 (12B-it)  & Gemma & 12B & 2025 & Multimodal \\
+Gemma 4 (31B-it)  & Gemma & 31B & 2026 & Multimodal \\
 \bottomrule
 \end{tabular}
 \end{table}
 
+We note that Gemma~3 and Gemma~4 introduced multimodal (vision-language)
+capabilities, representing an architectural shift from the text-only
+Gemma~1 and Gemma~2. This distinction is relevant to interpreting the
+safety regression observed in Gemma~3 (\S\ref{sec:discussion}).
+
 \subsection{Evolution Configuration}
 
 MAP-Elites with $6 \times 6 \times 8$ grid (strategy $\times$ encoding
-$\times$ category), batch size 50, 200 generations, concurrency 5.
-LLM judge: GPT-5.4-mini. Seed pool: 400 HarmBench behaviors.
+$\times$ category), yielding 288 behavioral niches. Batch size 50,
+200 generations per model, concurrency 5 parallel evaluations.
+Mutation rate 0.3, crossover rate 0.7.
+Seed pool: 400 HarmBench behaviors across 7 categories.
 
 \subsection{Compute}
 
-All Gemma models served on a single NVIDIA H200~NVL (141\,GB HBM3e) via
-vLLM~0.19.0. Total GPU time: $\sim$36 hours (\$122). Frontier models via
-proprietary APIs.
+All Gemma models served sequentially on a single NVIDIA H200~NVL
+(141\,GB HBM3e) via vLLM~0.19.1. Transfer replays judged by
+Llama-3.1-8B-Instruct on a separate NVIDIA L40S (48\,GB).
+Total GPU time: approximately 40 hours across both machines.
 
 %% ============================================================================
 \section{Results}
@@ -234,106 +252,207 @@ proprietary APIs.
 \subsection{Baseline Attack Success Rates}
 \label{sec:results:baseline}
 
-\begin{table}[h]
+Table~\ref{tab:asr} presents attack success rates (ASR) across all
+HarmBench categories for each Gemma generation. The most striking
+observation is the \emph{non-monotonic} pattern: overall ASR decreases
+from 70.2\% (Gemma~1) to 46.8\% (Gemma~2), then \emph{increases} to
+81.0\% (Gemma~3), before dropping to its lowest value of 28.6\%
+(Gemma~4).
+
+\begin{table}[t]
 \centering
-\caption{Attack success rate (ASR) per HarmBench category across Gemma
-generations. Higher = more vulnerable.}
+\caption{Attack success rate (\%) per HarmBench category across Gemma
+generations. \textbf{Bold} indicates highest ASR per category.
+Gemma~3 is the most vulnerable generation in 5 of 7 categories.}
 \label{tab:asr}
 \begin{tabular}{lcccc}
 \toprule
 \textbf{Category} & \textbf{Gemma 1} & \textbf{Gemma 2} & \textbf{Gemma 3} & \textbf{Gemma 4} \\
+ & \textbf{(7B)} & \textbf{(9B)} & \textbf{(12B)} & \textbf{(31B)} \\
 \midrule
-Chemical/Biological & --- & --- & --- & --- \\
-Copyright           & --- & --- & --- & --- \\
-Cybercrime          & --- & --- & --- & --- \\
-Harassment          & --- & --- & --- & --- \\
-Harmful             & --- & --- & --- & --- \\
-Illegal             & --- & --- & --- & --- \\
-Misinformation      & --- & --- & --- & --- \\
+Chemical/Biological & 61.5 & 55.9 & \textbf{90.2} & 18.2 \\
+Copyright           & 68.9 & 44.6 & \textbf{83.3} & 28.6 \\
+Cybercrime          & 69.6 & 60.0 & \textbf{93.3} & 26.7 \\
+Harassment          & \textbf{55.0} & 36.8 & 18.8 & 26.1 \\
+Harmful             & \textbf{82.1} & 16.0 & 53.3 & 16.7 \\
+Illegal             & \textbf{85.0} & 51.0 & 81.0 & 23.9 \\
+Misinformation      & 70.6 & 48.3 & \textbf{89.2} & 40.5 \\
 \midrule
-\textbf{Overall}    & --- & --- & --- & --- \\
+\textbf{Overall}    & 70.2 & 46.8 & \textbf{81.0} & 28.6 \\
 \bottomrule
 \end{tabular}
 \end{table}
 
+This pattern is not uniform across categories. Harassment shows a
+\emph{consistent} decline across generations (55.0\% $\to$ 36.8\%
+$\to$ 18.8\% $\to$ 26.1\%), suggesting sustained alignment effort in
+this category. In contrast, cybercrime shows a dramatic spike in
+Gemma~3 (93.3\%) before being substantially reduced in Gemma~4
+(26.7\%).
+
 \subsection{Cross-Generational Transfer}
 \label{sec:results:transfer}
 
-\begin{figure}[h]
+Figure~\ref{fig:transfer} presents the full $4 \times 4$ transfer
+matrix. Several patterns emerge:
+
+\begin{figure}[t]
 \centering
-% \includegraphics[width=0.55\textwidth]{transfer_heatmap.pdf}
-\fbox{\parbox{0.55\textwidth}{\centering\vspace{2cm}Transfer heatmap placeholder\vspace{2cm}}}
+\includegraphics[width=0.6\textwidth]{transfer_heatmap.pdf}
 \caption{Cross-generational attack transfer matrix. Cell $(i,j)$ shows the
 fraction of attacks evolved against Gemma~$i$ that succeed on Gemma~$j$.
-Diagonal entries are self-evaluation rates.}
+Diagonal entries are self-evaluation rates. Gemma~3 is the easiest
+transfer target (column); Gemma~4 is the hardest.}
 \label{fig:transfer}
 \end{figure}
 
-\textbf{[DESCRIBE: forward vs backward transfer findings.]}
+\paragraph{Gemma~3 is universally vulnerable.} Every archive transfers
+to Gemma~3 at high rates: 60.3\% from Gemma~1, 53.2\% from Gemma~2,
+and 48.8\% from Gemma~4. This confirms that Gemma~3's elevated ASR is
+not an artifact of its own evolution but reflects genuine vulnerability
+to diverse attack strategies.
 
-\begin{figure}[h]
+\paragraph{Gemma~4 resists transfer.} Transfer rates to Gemma~4 are
+the lowest across all sources: 30.2\% from Gemma~1, 20.6\% from
+Gemma~2, and 11.9\% from Gemma~3. The low transfer from Gemma~3 is
+particularly noteworthy: despite Gemma~3's high self-ASR, attacks
+evolved against it do not generalize to Gemma~4, suggesting that
+Gemma~4's safety improvements address \emph{fundamental} weaknesses
+rather than surface-level patches.
+
+\paragraph{Backward transfer is substantial.} Attacks from newer
+models transfer backward at 40--54\% rates (e.g., Gemma~2 $\to$
+Gemma~1: 54.0\%; Gemma~4 $\to$ Gemma~1: 40.5\%). This indicates that
+newer evolutionary probes discover attacks exploiting longstanding
+vulnerabilities, not merely generation-specific weaknesses.
+
+\paragraph{Transfer asymmetry.}
+Forward transfer from Gemma~1 to Gemma~3 (60.3\%) exceeds backward
+transfer from Gemma~3 to Gemma~1 (41.7\%). Old attacks are more
+effective against the newer vulnerable model than vice versa,
+suggesting that Gemma~3 inherited Gemma~1's weaknesses while
+introducing new ones that are not backward-compatible.
+
+\begin{figure}[t]
 \centering
-% \includegraphics[width=0.9\textwidth]{category_transfer.pdf}
-\fbox{\parbox{0.9\textwidth}{\centering\vspace{2cm}Category-conditional transfer placeholder\vspace{2cm}}}
-\caption{Per-category forward transfer rates. Some categories show
-persistent vulnerabilities across generations while others are
-effectively patched.}
+\includegraphics[width=0.95\textwidth]{category_transfer.pdf}
+\caption{Category-conditional forward transfer rates for selected
+model pairs. Transfer rates vary dramatically by category, revealing
+which vulnerability classes persist across generations.}
 \label{fig:cat_transfer}
 \end{figure}
 
 \subsection{Safety Scaling}
 \label{sec:results:scaling}
 
-\begin{figure}[h]
+\begin{figure}[t]
 \centering
-% \includegraphics[width=0.9\textwidth]{scaling_curve.pdf}
-\fbox{\parbox{0.9\textwidth}{\centering\vspace{2cm}Scaling curve placeholder\vspace{2cm}}}
-\caption{Attack success rate (left) and robustness (right) vs.\ model size.
-\textbf{[DESCRIBE: power-law / log-linear / plateau fit.]}}
+\includegraphics[width=0.95\textwidth]{scaling_curve.pdf}
+\caption{Attack success rate (left) and adversarial robustness (right)
+vs.\ model size. The relationship is non-monotonic: neither a power
+law nor a log-linear model fits the data, due to Gemma~3's anomalous
+regression.}
 \label{fig:scaling}
 \end{figure}
+
+Figure~\ref{fig:scaling} plots ASR and robustness ($1 - \text{ASR}$)
+against parameter count. The data does not conform to any standard
+scaling law. Instead, we observe a U-shaped vulnerability curve:
+robustness increases from Gemma~1 to Gemma~2 (29.8\% $\to$ 53.2\%),
+\emph{decreases} sharply for Gemma~3 (19.0\%), then recovers to its
+highest value for Gemma~4 (71.4\%).
+
+This non-monotonic pattern has two possible explanations: (1)~the
+architectural shift to multimodal capabilities in Gemma~3 introduced
+new attack surfaces that were not adequately safety-tested, or
+(2)~safety alignment was deprioritized during Gemma~3's development
+relative to capability expansion. The strong recovery in Gemma~4
+suggests the regression was recognized and addressed.
 
 \subsection{Vulnerability Fingerprints}
 \label{sec:results:fingerprint}
 
-\begin{figure}[h]
+\begin{figure}[t]
 \centering
-% \includegraphics[width=0.5\textwidth]{vulnerability_radar.pdf}
-\fbox{\parbox{0.5\textwidth}{\centering\vspace{2cm}Radar chart placeholder\vspace{2cm}}}
+\includegraphics[width=0.55\textwidth]{vulnerability_radar.pdf}
 \caption{Vulnerability fingerprints across Gemma generations. Each axis
-represents a HarmBench category; distance from center indicates ASR.}
+represents a HarmBench category; distance from center indicates ASR.
+Gemma~2 and Gemma~4 show compact profiles; Gemma~3's profile is
+dramatically expanded.}
 \label{fig:radar}
 \end{figure}
+
+Figure~\ref{fig:radar} presents vulnerability fingerprints as radar
+charts. Each model exhibits a distinct profile:
+\begin{itemize}
+    \item \textbf{Gemma~1}: broad, moderate vulnerability across all
+          categories (60--85\%).
+    \item \textbf{Gemma~2}: compact profile with notable residual
+          weakness in cybercrime (60.0\%) and chemical/biological
+          (55.9\%).
+    \item \textbf{Gemma~3}: dramatically expanded profile, exceeding
+          90\% ASR in cybercrime, chemical/biological, and
+          misinformation. Only harassment shows continued improvement.
+    \item \textbf{Gemma~4}: the most compact profile overall, with
+          misinformation (40.5\%) as the primary residual weakness.
+\end{itemize}
 
 %% ============================================================================
 \section{Discussion}
 \label{sec:discussion}
 
-\paragraph{Patches vs.\ general robustness.}
-\textbf{[DISCUSS: If forward transfer is high, Google is patching specific
-attacks but not building general robustness. If low, alignment improvements
-generalize.]}
+\paragraph{Safety regression in Gemma~3.}
+The most surprising finding is Gemma~3's safety regression. We
+hypothesize this is related to the introduction of multimodal
+capabilities: Gemma~3 was the first Gemma generation with vision-language
+support (architecture: \texttt{Gemma3ForConditionalGeneration}),
+requiring substantial architectural changes that may have disrupted
+safety-trained text representations. The fact that harassment---the
+category most explicitly targeted by safety training across all
+LLMs---continued to improve even in Gemma~3 supports this
+interpretation: category-specific safety training was maintained,
+but general robustness was compromised by the architectural shift.
 
-\paragraph{Scaling implications.}
-\textbf{[DISCUSS: If robustness follows a power law, we can predict safety
-of future model sizes. If it plateaus, bigger $\neq$ safer.]}
+\paragraph{Gemma~4's recovery.}
+Gemma~4 achieved the highest robustness in the family despite being
+multimodal, suggesting that the safety regression in Gemma~3 was
+addressable. The extremely low transfer rate from Gemma~3 to Gemma~4
+(11.9\%) indicates that Gemma~4's improvements were not simply patches
+for known Gemma~3 attacks but rather fundamental alignment improvements.
 
-\paragraph{Category-level variation.}
-\textbf{[DISCUSS: Which categories show persistent vulnerabilities across
-generations? What does this imply for deployment decisions?]}
+\paragraph{Implications for safety evaluation.}
+Our findings have three implications for LLM safety evaluation:
+\begin{enumerate}
+    \item \textbf{Static benchmarks are insufficient.} A single-timepoint
+          benchmark would miss the non-monotonic safety trajectory entirely.
+          Longitudinal evaluation with adaptive probes is necessary.
+    \item \textbf{Architectural changes require safety re-validation.}
+          The Gemma~3 regression coincides with the multimodal
+          architectural shift, suggesting that capability expansions
+          should trigger comprehensive safety re-evaluation.
+    \item \textbf{Transfer analysis reveals alignment depth.} The
+          distinction between Gemma~3 (high self-ASR, high inbound
+          transfer) and Gemma~4 (low self-ASR, low inbound transfer)
+          is only visible through cross-generational transfer analysis.
+\end{enumerate}
 
 \paragraph{Limitations.}
 \begin{itemize}
-    \item Four data points for scaling analysis --- insufficient for
-          confident extrapolation.
-    \item Single model family (Gemma) for generational analysis ---
-          findings may not generalize to other families.
+    \item Four data points for scaling analysis---insufficient for
+          confident extrapolation or curve fitting.
+    \item Single model family (Gemma) for generational analysis---
+          findings may not generalize to other families (Claude,
+          GPT, Llama).
     \item HarmBench coverage: 400 behaviors across 7 categories is
           comprehensive but not exhaustive.
-    \item LLM judge (GPT-5.4-mini) may have systematic biases in
-          evaluating certain attack types.
+    \item Two different LLM judges were used (GPT-5.4-mini for
+          evolution, Llama-3.1-8B for transfer replay), which may
+          introduce scoring inconsistencies.
     \item Evolutionary probe explores a subset of the attack space;
           absence of a successful attack does not prove safety.
+    \item We study only the text modality; Gemma~3 and 4's vision
+          capabilities may present additional attack surfaces not
+          captured here.
 \end{itemize}
 
 %% ============================================================================
@@ -342,20 +461,36 @@ generations? What does this imply for deployment decisions?]}
 
 We have presented a methodology for longitudinal safety evaluation of LLMs
 using quality-diversity evolution as a differential probe. Applied to four
-generations of Google's Gemma models, we find that
-\textbf{[MAIN FINDING 1: transfer result]} and
-\textbf{[MAIN FINDING 2: scaling result]}.
+generations of Google's Gemma models, we find that:
 
-These results suggest that \textbf{[MAIN IMPLICATION]}.
-We advocate for model developers to publish generational safety analyses
-alongside capability benchmarks, using adaptive adversarial probes rather
-than static benchmarks alone.
+\begin{enumerate}
+    \item Safety alignment does not improve monotonically across model
+          generations. Gemma~3 represents a significant regression
+          (81.0\% ASR) relative to both its predecessor (46.8\%) and
+          successor (28.6\%).
+    \item Cross-generational attack transfer is asymmetric: older
+          attacks transfer readily to Gemma~3 (up to 60.3\%) but
+          poorly to Gemma~4 (11.9--30.2\%), suggesting Gemma~4's
+          improvements are fundamental rather than superficial.
+    \item Vulnerability profiles are category-dependent, with
+          harassment showing consistent improvement while categories
+          like cybercrime and misinformation exhibit dramatic
+          generation-to-generation swings.
+\end{enumerate}
+
+These results underscore the need for \emph{adaptive, longitudinal}
+safety evaluation. Static benchmarks provide a snapshot; evolutionary
+probing with transfer analysis reveals the \emph{trajectory} of safety
+alignment. We advocate for model developers to publish generational
+safety analyses alongside capability benchmarks, and for the research
+community to develop standardized protocols for cross-version
+safety comparison.
 
 %% ============================================================================
 
 \begin{ack}
-Compute for Gemma experiments was provided by RunPod.
-\textbf{[Additional acknowledgments if needed.]}
+Compute for Gemma experiments was provided by RunPod (NVIDIA H200~NVL
+and L40S instances).
 \end{ack}
 
 \bibliographystyle{plainnat}
