@@ -1055,7 +1055,7 @@ fn run_transfer_replay(
                     }
                 }
             })
-            .buffer_unordered(concurrency)
+            .buffered(concurrency)
             .collect()
             .await;
         results

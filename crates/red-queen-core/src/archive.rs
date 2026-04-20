@@ -3,7 +3,7 @@
 use crate::genome::{BehaviorDescriptor, Genome};
 use crate::population::Individual;
 use rand::Rng;
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 
 /// Trait for QD archives.
 pub trait Archive<G: Genome>: Send + Sync {
@@ -58,7 +58,7 @@ pub struct BehaviorDimension {
 /// MAP-Elites archive.
 pub struct MapElitesArchive<G: Genome> {
     /// The grid of cells.
-    grid: HashMap<Vec<usize>, Individual<G>>,
+    grid: BTreeMap<Vec<usize>, Individual<G>>,
     /// Dimension configurations.
     dimensions: Vec<BehaviorDimension>,
 }
@@ -76,7 +76,7 @@ impl<G: Genome> MapElitesArchive<G> {
     /// Create a new MAP-Elites archive.
     pub fn new(dimensions: Vec<BehaviorDimension>) -> Self {
         Self {
-            grid: HashMap::new(),
+            grid: BTreeMap::new(),
             dimensions,
         }
     }

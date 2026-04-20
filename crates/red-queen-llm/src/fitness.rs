@@ -202,7 +202,7 @@ impl JailbreakFitness {
     async fn evaluate_batch_async(&self, genomes: &[LLMAttackGenome]) -> Vec<FitnessResult> {
         stream::iter(genomes)
             .map(|genome| self.evaluate_async(genome))
-            .buffer_unordered(self.concurrency)
+            .buffered(self.concurrency)
             .collect()
             .await
     }
@@ -421,7 +421,7 @@ impl JudgedJailbreakFitness {
     async fn evaluate_batch_async(&self, genomes: &[LLMAttackGenome]) -> Vec<FitnessResult> {
         stream::iter(genomes)
             .map(|genome| self.evaluate_async(genome))
-            .buffer_unordered(self.concurrency)
+            .buffered(self.concurrency)
             .collect()
             .await
     }
@@ -711,5 +711,60 @@ mod tests {
         // Should have judge result
         let judge_result = record.judge_result.as_ref().unwrap();
         assert!(judge_result.refused); // MockTarget::always_refuse says "I cannot help"
+    }
+
+    /// Verify that MAP-Elites evolution is deterministic given the same seed.
+    /// Runs 10 generations twice with the same seed and asserts identical archives.
+    #[test]
+    fn test_seed_determinism() {
+        use red_queen_core::archive::{Archive, BehaviorDimension, MapElitesArchive};
+        use red_queen_core::evolution::{MapElitesConfig, MapElitesEvolution};
+        use red_queen_core::variation::VariationConfig;
+
+        fn run_evolution(seed: u64) -> Vec<(String, f64)> {
+            let target = Arc::new(MockTarget::always_comply());
+            let fitness = JailbreakFitness::new(target)
+                .with_retry(NO_RETRY);
+
+            let dimensions = vec![
+                BehaviorDimension { name: "strategy".into(), min: 0.0, max: 6.0, bins: 6 },
+                BehaviorDimension { name: "encoding".into(), min: 0.0, max: 6.0, bins: 6 },
+                BehaviorDimension { name: "category".into(), min: 0.0, max: 8.0, bins: 8 },
+            ];
+            let archive = MapElitesArchive::new(dimensions);
+            let config = MapElitesConfig {
+                batch_size: 10,
+                variation: VariationConfig { mutation_rate: 0.3, crossover_rate: 0.7 },
+                seed: Some(seed),
+                initial_population: 10,
+            };
+
+            let mut evolution = MapElitesEvolution::new(archive, fitness, config);
+            for _ in 0..10 {
+                evolution.step();
+            }
+
+            let archive = evolution.archive();
+            let mut entries: Vec<(String, f64)> = archive
+                .get_all()
+                .iter()
+                .map(|ind| (ind.genome.to_prompt(), ind.fitness_value()))
+                .collect();
+            entries.sort_by(|a, b| a.0.cmp(&b.0));
+            entries
+        }
+
+        let run1 = run_evolution(42);
+        let run2 = run_evolution(42);
+
+        assert_eq!(run1.len(), run2.len(), "archive sizes differ");
+        for (i, (a, b)) in run1.iter().zip(run2.iter()).enumerate() {
+            assert_eq!(a.0, b.0, "prompt mismatch at entry {}", i);
+            assert!(
+                (a.1 - b.1).abs() < 1e-10,
+                "fitness mismatch at entry {}: {} vs {}",
+                i, a.1, b.1
+            );
+        }
     }
 }

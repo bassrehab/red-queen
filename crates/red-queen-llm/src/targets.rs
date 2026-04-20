@@ -111,6 +111,7 @@ impl LLMTarget for OpenAITarget {
 
         let mut body = serde_json::json!({
             "model": self.model,
+            "temperature": 0,
             "messages": [
                 {"role": "user", "content": prompt}
             ],
@@ -191,6 +192,7 @@ impl LLMTarget for AnthropicTarget {
             .json(&serde_json::json!({
                 "model": self.model,
                 "max_tokens": 1024,
+                "temperature": 0,
                 "messages": [
                     {"role": "user", "content": prompt}
                 ]
@@ -275,7 +277,8 @@ impl LLMTarget for GeminiTarget {
                     }
                 ],
                 "generationConfig": {
-                    "maxOutputTokens": 1024
+                    "maxOutputTokens": 1024,
+                    "temperature": 0
                 }
             }))
             .send()
@@ -358,7 +361,8 @@ impl LLMTarget for OllamaTarget {
                 "messages": [
                     {"role": "user", "content": prompt}
                 ],
-                "stream": false
+                "stream": false,
+                "options": {"temperature": 0}
             }))
             .send()
             .await?;
