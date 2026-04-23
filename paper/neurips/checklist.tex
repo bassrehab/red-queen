@@ -41,7 +41,8 @@
     \answerYes{Section~\ref{sec:setup} specifies all models, hyperparameters
     (grid dimensions, batch size, generations, concurrency), seed dataset
     (HarmBench 400 behaviors), judge model (GPT-5.4-mini), serving
-    infrastructure (vLLM 0.19.0, bf16), and hardware (H200 NVL). The
+    infrastructure (vLLM 0.19.1, bf16, temperature 0), and hardware
+    (H200, RTX~4090). The
     transfer replay protocol is fully described in
     Section~\ref{sec:method:transfer}.}
     \end{enumerate}
@@ -89,7 +90,7 @@
               workers, memory, time for each experiment, etc.) needed to
               reproduce the experiments?
     \answerYes{Section~\ref{sec:setup} reports: NVIDIA H200 NVL (141\,GB),
-    vLLM 0.19.0, total GPU time $\sim$36 hours, total cost $\sim$\$122.
+    vLLM 0.19.1, total GPU time $\sim$55 hours across two machines.
     Frontier models via proprietary APIs.}
     \end{enumerate}
 
