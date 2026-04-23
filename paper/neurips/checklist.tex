@@ -65,7 +65,7 @@
               (e.g., data splits, hyperparameters, how they were chosen,
               type of optimizer, etc.) necessary to understand the results?
     \answerYes{All MAP-Elites hyperparameters are specified in
-    Section~\ref{sec:setup}. No training is performed --- we evaluate
+    Section~\ref{sec:setup}. No training is performed; we evaluate
     existing models. Evolution configuration: 200 generations,
     batch size 50, $6 \times 6 \times 8$ MAP-Elites grid, mutation
     rate 0.3, crossover rate 0.7.}
@@ -144,7 +144,7 @@
     \begin{enumerate}
         \item Are new assets introduced in the paper well documented and
               is the documentation provided alongside the assets?
-    \answerYes{The evolution framework (Red Queen) is documented with
+    \answerYes{The evolution framework is documented with
     README, CLI help text, and reproduction instructions. Analysis
     scripts include docstrings and usage examples.}
     \end{enumerate}
@@ -174,8 +174,8 @@
     \answerYes{LLMs are used in two capacities: (1)~as evaluation targets
     (the Gemma models being probed for safety), and (2)~as a self-hosted
     automated judge (Llama-3.1-8B-Instruct scoring target responses).
-    Claude Code was used to assist with framework development and
-    analysis scripts.}
+    An LLM coding assistant was used to help with framework development
+    and analysis scripts.}
     \end{enumerate}
 
 \end{enumerate}

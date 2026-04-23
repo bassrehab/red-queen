@@ -64,7 +64,7 @@ A fundamental question is whether safety improvements \emph{generalize}:
 when a model developer patches vulnerabilities between releases, do old
 attacks stop working (indicating targeted fixes), or does the model become
 broadly more robust? Answering this requires a methodology for
-\emph{differential safety probing}---systematically comparing safety
+\emph{differential safety probing}: systematically comparing safety
 surfaces across model versions with a consistent adversarial process.
 
 In this paper, we address two specific questions:
@@ -130,14 +130,14 @@ MAP-Elites~\cite{mouret2015illuminating} maintains a grid of diverse,
 high-performing solutions across behavioral dimensions. Prior work has
 applied QD methods to game playing~\cite{fontaine2020covariance} and
 robot design~\cite{cully2015robots}.
-Anonymous~\cite{mitra2026qd} demonstrated that QD evolution discovers
+Anonymous~\cite{anonymous2026qd} demonstrated that QD evolution discovers
 more diverse LLM vulnerabilities than standard evolutionary search in
 a single-model study. The present work differs in three ways: (1)~we
 study \emph{cross-generational transfer} rather than single-model
 attack discovery; (2)~we introduce a transfer replay protocol for
 comparing safety surfaces; and (3)~we run all experiments with multiple
 seeds and report statistical significance. The shared methodological
-element---MAP-Elites as the evolutionary probe---is a tool, not a
+element (MAP-Elites as the evolutionary probe) is a tool, not a
 contribution of this paper.
 
 \paragraph{Scaling laws.}
@@ -145,7 +145,7 @@ Scaling laws for LLM capabilities are well-established~\cite{kaplan2020scaling,
 hoffmann2022training}. Whether safety properties follow similar predictable
 scaling is largely unexplored. We provide evidence that adversarial
 robustness does \emph{not} scale monotonically within a single model
-family---a finding that contrasts with the regularity observed in
+family, a finding that contrasts with the regularity observed in
 capability scaling.
 
 %% ============================================================================
@@ -286,7 +286,7 @@ The improvement from Gemma~1 to Gemma~2 ($p = 0.032$) and the
 regression from Gemma~2 to Gemma~3 ($p = 0.030$) are both statistically
 significant under paired bootstrap tests. The recovery from Gemma~3 to
 Gemma~4, while large in absolute terms ($-34.8$ percentage points),
-does not reach significance at $p < 0.05$ with 3 seeds---a limitation
+does not reach significance at $p < 0.05$ with 3 seeds, a limitation
 of our sample size that we discuss in \S\ref{sec:discussion}.
 
 \begin{table}[t]
@@ -314,11 +314,11 @@ Misinfo           & $33.3 \pm 0.0$ & $28.7 \pm 1.3$ & $99.1 \pm 1.3$ & $\mathbf{
 \end{table}
 
 This pattern is not uniform across categories. Copyright remains at
-100\% ASR across all four generations---every model fails this category
+100\% ASR across all four generations; every model fails this category
 completely. Harassment shows a broadly declining trajectory
 ($33.3\% \to 22.2\% \to 28.7\% \to 11.1\%$), suggesting sustained
 alignment effort. Misinformation exhibits the most dramatic swing:
-$28.7\%$ in Gemma~2 to $99.1\%$ in Gemma~3---a near-total regression---before recovering to $27.8\%$ in Gemma~4.
+$28.7\%$ in Gemma~2 to $99.1\%$ in Gemma~3 (a near-total regression) before recovering to $27.8\%$ in Gemma~4.
 
 \subsection{Cross-Generational Transfer}
 \label{sec:results:transfer}
@@ -340,7 +340,7 @@ are self-evaluation rates.}
 \paragraph{Gemma~3 is the easiest transfer target.} Archives from every
 generation transfer to Gemma~3 at 44--46\%: $45.5\% \pm 1.9\%$ from
 Gemma~1, $44.5\% \pm 0.4\%$ from Gemma~2, and $45.5\% \pm 3.7\%$
-from Gemma~4. This uniformity is striking---it suggests that Gemma~3
+from Gemma~4. This uniformity is striking: it suggests that Gemma~3
 is vulnerable to a \emph{generic} class of attacks, not merely those
 tailored to its own generation.
 
@@ -369,7 +369,7 @@ longstanding vulnerabilities, not merely generation-specific weaknesses.
 vs.\ model size with error bars ($\pm$ 1 std, 3 seeds). The green
 shaded region shows the range spanned by Gemma~1, 2, and 4; Gemma~3
 (red) falls well outside this range, demonstrating the non-monotonic
-pattern. No scaling law is fit---four data points are insufficient.}
+pattern. No scaling law is fit; four data points are insufficient.}
 \label{fig:scaling}
 \end{figure}
 
@@ -424,9 +424,9 @@ across 3 seeds). We hypothesize this is related to the introduction of
 multimodal capabilities: Gemma~3 was the first Gemma generation with
 vision-language support (architecture: \texttt{Gemma3ForConditionalGeneration}),
 requiring substantial architectural changes that may have disrupted
-safety-trained text representations. The fact that harassment---the
+safety-trained text representations. The fact that harassment, the
 category most explicitly targeted by safety training across all
-LLMs---continued to improve even in Gemma~3 supports this
+LLMs, continued to improve even in Gemma~3 supports this
 interpretation: category-specific safety training was maintained,
 but general robustness was compromised by the architectural shift.
 
@@ -480,7 +480,7 @@ Our findings have three implications:
           improvement, while large ($-34.8$ pp), does not reach
           $p < 0.05$. Additional seeds would tighten confidence
           intervals.
-    \item Single model family (Gemma) for generational analysis---
+    \item Single model family (Gemma) for generational analysis;
           findings may not generalize to other families (Claude,
           GPT, Llama).
     \item HarmBench coverage: 400 behaviors across 7 categories is
