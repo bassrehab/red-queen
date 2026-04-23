@@ -40,7 +40,8 @@
               provided or not)?
     \answerYes{Section~\ref{sec:setup} specifies all models, hyperparameters
     (grid dimensions, batch size, generations, concurrency), seed dataset
-    (HarmBench 400 behaviors), judge model (GPT-5.4-mini), serving
+    (HarmBench 400 behaviors), judge model (Llama-3.1-8B-Instruct,
+    self-hosted), serving
     infrastructure (vLLM 0.19.1, bf16, temperature 0), and hardware
     (H200, RTX~4090). The
     transfer replay protocol is fully described in
@@ -91,7 +92,7 @@
               reproduce the experiments?
     \answerYes{Section~\ref{sec:setup} reports: NVIDIA H200 NVL (141\,GB),
     vLLM 0.19.1, total GPU time $\sim$55 hours across two machines.
-    Frontier models via proprietary APIs.}
+    }
     \end{enumerate}
 
 \item {\bf Code Of Ethics}
@@ -136,8 +137,8 @@
               respected?
     \answerYes{HarmBench is cited and used under its original license.
     Gemma models are used under Google's Gemma license. Proprietary
-    models are accessed via their official APIs under standard terms
-    of service.}
+    models are used under Google's Gemma license. The judge model
+    (Llama-3.1-8B-Instruct) is used under Meta's license.}
     \end{enumerate}
 
 \item {\bf New Assets}

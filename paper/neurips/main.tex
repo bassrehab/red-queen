@@ -29,25 +29,24 @@ Non-Monotonic Safety Alignment in LLMs}
 \maketitle
 
 \begin{abstract}
-We propose quality-diversity evolution (MAP-Elites) as a differential
-probe for comparing adversarial robustness across generations of a model
-family. Evolving diverse jailbreak strategies against four generations of
-Google's Gemma models (7B--31B) and replaying attack archives across
-generations, we find that safety alignment does \emph{not} improve
-monotonically: Gemma~3 (12B) exhibits $68.7\% \pm 4.7\%$ attack success
-rate (ASR), significantly higher than its predecessor Gemma~2
-($45.5\% \pm 5.9\%$; $p = 0.030$, paired bootstrap) and its successor
-Gemma~4 ($33.9\% \pm 1.4\%$). Cross-generational transfer analysis
-reveals that attacks evolved against \emph{any} generation transfer to
-Gemma~3 at 44--46\% but only 14--18\% to Gemma~4, suggesting that
-Gemma~4's improvements are fundamental rather than surface-level patches.
+Safety alignment in LLMs does not improve monotonically across model
+generations. Studying four generations of Google's Gemma family
+(7B--31B) with quality-diversity evolution (MAP-Elites) as an automated
+red-teaming probe, we find that Gemma~3 (12B) exhibits
+$68.7\% \pm 4.7\%$ attack success rate (ASR), significantly higher
+than its predecessor Gemma~2 ($45.5\% \pm 5.9\%$; $p = 0.030$, paired
+bootstrap) and its successor Gemma~4 ($33.9\% \pm 1.4\%$). Replaying
+evolved attack archives across generations reveals that attacks from
+\emph{any} source transfer to Gemma~3 at 44--46\% but only 14--18\%
+to Gemma~4, indicating that Gemma~4's safety gains generalize beyond
+the attack distributions evolved against earlier generations.
 Category-level analysis shows that copyright and cybercrime
 vulnerabilities persist at near-100\% across all generations, while
-misinformation defense regresses from 71\% to 1\% ASR between Gemma~2
+misinformation ASR jumps from 29\% to 99\% between Gemma~2
 and Gemma~3. These patterns are invisible to static benchmarks and
 emerge only through adaptive, longitudinal probing.
-All experiments use 3 random seeds; code and artifacts are available
-anonymously.
+All experiments use 3 random seeds with a unified self-hosted judge;
+code and artifacts are available anonymously.
 \end{abstract}
 
 %% ============================================================================
@@ -130,15 +129,13 @@ MAP-Elites~\cite{mouret2015illuminating} maintains a grid of diverse,
 high-performing solutions across behavioral dimensions. Prior work has
 applied QD methods to game playing~\cite{fontaine2020covariance} and
 robot design~\cite{cully2015robots}.
-Anonymous~\cite{anonymous2026qd} demonstrated that QD evolution discovers
-more diverse LLM vulnerabilities than standard evolutionary search in
-a single-model study. The present work differs in three ways: (1)~we
-study \emph{cross-generational transfer} rather than single-model
-attack discovery; (2)~we introduce a transfer replay protocol for
-comparing safety surfaces; and (3)~we run all experiments with multiple
-seeds and report statistical significance. The shared methodological
-element (MAP-Elites as the evolutionary probe) is a tool, not a
-contribution of this paper.
+Anonymous~\cite{anonymous2026qd} established that MAP-Elites discovers
+more diverse LLM vulnerabilities than standard evolutionary search,
+in a single-model setting. We adopt their probe and extend it in
+three directions: a cross-generational transfer replay protocol,
+a four-generation longitudinal study with three seeds per model,
+and the empirical finding that safety alignment regresses
+non-monotonically across Gemma generations.
 
 \paragraph{Scaling laws.}
 Scaling laws for LLM capabilities are well-established~\cite{kaplan2020scaling,
@@ -212,11 +209,9 @@ Off-diagonal entries reveal:
 
 We plot robustness $R = 1 - \text{ASR}$ as a function of model
 generation (with parameter count on the axis) to visualize the
-trajectory of safety alignment within the Gemma family. We explicitly
-do \emph{not} fit scaling laws to four data points; instead, we treat
-the four generations as a case study and test specific pairwise
-contrasts with paired bootstrap tests ($p < 0.05$, Holm--Bonferroni
-corrected).
+trajectory of safety alignment within the Gemma family. We treat the four generations as a case study and test specific pairwise
+contrasts with paired bootstrap tests ($p < 0.05$, uncorrected;
+$N = 3$ seeds limits power for multiple-testing correction).
 
 %% ============================================================================
 \section{Experimental Setup}
@@ -234,12 +229,19 @@ on NVIDIA RTX~4090 (24\,GB).}
 \toprule
 \textbf{Model} & \textbf{Family} & \textbf{Params} & \textbf{Release} & \textbf{Architecture} \\
 \midrule
-Gemma 1 (7B-it)   & Gemma & 7B  & 2024 & Text-only \\
-Gemma 2 (9B-it)   & Gemma & 9B  & 2024 & Text-only \\
-Gemma 3 (12B-it)  & Gemma & 12B & 2025 & Multimodal \\
-Gemma 4 (31B-it)  & Gemma & 31B & 2026 & Multimodal \\
+Gemma 1 (7B-it)\textsuperscript{a}   & Gemma & 7B  & 2024 & Text-only \\
+Gemma 2 (9B-it)\textsuperscript{b}   & Gemma & 9B  & 2024 & Text-only \\
+Gemma 3 (12B-it)\textsuperscript{c}  & Gemma & 12B & 2025 & Multimodal \\
+Gemma 4 (31B-it)\textsuperscript{d}  & Gemma & 31B & 2026 & Multimodal \\
 \bottomrule
 \end{tabular}
+\\[2pt]
+{\footnotesize
+\textsuperscript{a}\texttt{google/gemma-7b-it}\quad
+\textsuperscript{b}\texttt{google/gemma-2-9b-it}\quad
+\textsuperscript{c}\texttt{google/gemma-3-12b-it}\quad
+\textsuperscript{d}\texttt{google/gemma-4-31B-it}
+}
 \end{table}
 
 We note that Gemma~3 and Gemma~4 introduced multimodal (vision-language)
@@ -293,32 +295,34 @@ of our sample size that we discuss in \S\ref{sec:discussion}.
 \centering
 \caption{Attack success rate (\%) per HarmBench category across Gemma
 generations (mean $\pm$ std, 3 seeds). \textbf{Bold} indicates lowest
-(safest) ASR per category.}
+(safest) ASR per category. Cells with $\pm 0.0$ reflect floor or
+ceiling effects where all 3 seeds converged to the same value.}
 \label{tab:asr}
 \begin{tabular}{lcccc}
 \toprule
 \textbf{Category} & \textbf{Gemma 1} & \textbf{Gemma 2} & \textbf{Gemma 3} & \textbf{Gemma 4} \\
  & \textbf{(7B)} & \textbf{(9B)} & \textbf{(12B)} & \textbf{(31B)} \\
 \midrule
-Chem/Bio          & $40.7 \pm 5.2$ & $31.5 \pm 1.3$ & $54.6 \pm 24.5$ & $\mathbf{20.4 \pm 3.3}$ \\
+Chem/Bio          & $40.7 \pm 6.4$ & $31.5 \pm 1.6$ & $54.6 \pm 30.0$ & $\mathbf{0.0 \pm 0.0}$ \\
 Copyright         & $100.0 \pm 0.0$ & $100.0 \pm 0.0$ & $100.0 \pm 0.0$ & $100.0 \pm 0.0$ \\
-Cybercrime        & $97.2 \pm 3.9$ & $72.2 \pm 33.6$ & $100.0 \pm 0.0$ & $\mathbf{33.3 \pm 9.6}$ \\
-Harassment        & $33.3 \pm 0.0$ & $22.2 \pm 3.9$ & $28.7 \pm 4.7$ & $\mathbf{11.1 \pm 3.9}$ \\
-Harmful           & $72.2 \pm 16.7$ & $\mathbf{26.4 \pm 1.4}$ & $34.7 \pm 6.9$ & $30.6 \pm 1.4$ \\
-Illegal           & $44.4 \pm 15.7$ & $33.3 \pm 23.6$ & $50.0 \pm 14.2$ & $\mathbf{20.4 \pm 3.2}$ \\
-Misinfo           & $33.3 \pm 0.0$ & $28.7 \pm 1.3$ & $99.1 \pm 1.3$ & $\mathbf{27.8 \pm 1.3}$ \\
+Cybercrime        & $97.2 \pm 4.8$ & $72.2 \pm 41.1$ & $100.0 \pm 0.0$ & $\mathbf{48.1 \pm 44.5}$ \\
+Harassment        & $33.3 \pm 0.0$ & $22.2 \pm 4.8$ & $28.7 \pm 5.8$ & $\mathbf{1.9 \pm 1.6}$ \\
+Harmful           & $72.2 \pm 23.6$ & $\mathbf{26.4 \pm 2.0}$ & $34.7 \pm 9.8$ & $\mathbf{0.0 \pm 0.0}$ \\
+Illegal           & $44.4 \pm 19.2$ & $33.3 \pm 28.9$ & $50.0 \pm 17.3$ & $\mathbf{0.0 \pm 0.0}$ \\
+Misinfo           & $33.3 \pm 0.0$ & $\mathbf{28.7 \pm 1.6}$ & $99.1 \pm 1.6$ & $76.9 \pm 25.8$ \\
 \midrule
-\textbf{Overall}  & $59.4 \pm 2.5$ & $45.5 \pm 5.9$ & $68.7 \pm 4.7$ & $\mathbf{33.9 \pm 1.4}$ \\
+\textbf{Overall}  & $59.4 \pm 3.0$ & $45.5 \pm 7.2$ & $68.7 \pm 5.7$ & $\mathbf{33.9 \pm 1.8}$ \\
 \bottomrule
 \end{tabular}
 \end{table}
 
 This pattern is not uniform across categories. Copyright remains at
 100\% ASR across all four generations; every model fails this category
-completely. Harassment shows a broadly declining trajectory
-($33.3\% \to 22.2\% \to 28.7\% \to 11.1\%$), suggesting sustained
-alignment effort. Misinformation exhibits the most dramatic swing:
-$28.7\%$ in Gemma~2 to $99.1\%$ in Gemma~3 (a near-total regression) before recovering to $27.8\%$ in Gemma~4.
+completely. Gemma~4 achieves 0\% ASR in three categories (chem/bio,
+harmful, illegal) but retains high misinformation ASR
+($76.9\% \pm 25.8\%$). Misinformation exhibits the most dramatic
+trajectory: $28.7\%$ in Gemma~2, spiking to $99.1\%$ in Gemma~3,
+and remaining elevated at $76.9\%$ in Gemma~4.
 
 \subsection{Cross-Generational Transfer}
 \label{sec:results:transfer}
@@ -350,8 +354,8 @@ $18.0\% \pm 1.5\%$ from Gemma~2, and $14.0\% \pm 2.7\%$ from
 Gemma~3. The low transfer from Gemma~3 is particularly noteworthy:
 despite Gemma~3's high self-ASR ($68.7\%$), attacks evolved against
 it do not generalize to Gemma~4, suggesting that Gemma~4's safety
-improvements address \emph{fundamental} weaknesses rather than
-surface-level patches.
+improvements generalize beyond the attack distributions evolved
+against earlier generations.
 
 \paragraph{Backward transfer is substantial and uniform.} Attacks from
 all generations transfer backward to Gemma~1 at $\sim$49--52\%
@@ -409,8 +413,9 @@ charts. Each model exhibits a distinct profile:
     \item \textbf{Gemma~3}: dramatically expanded in misinformation
           ($99.1\%$) and cybercrime ($100\%$). Only harassment
           shows continued improvement.
-    \item \textbf{Gemma~4}: compact with the lowest overall ASR,
-          but copyright persists at $100\%$.
+    \item \textbf{Gemma~4}: achieves 0\% ASR in chem/bio, harmful,
+          and illegal, but copyright ($100\%$) and misinformation
+          ($76.9\%$) remain elevated.
 \end{itemize}
 
 %% ============================================================================
@@ -435,8 +440,8 @@ Gemma~4 achieved the highest robustness in the family ($33.9\% \pm
 1.4\%$ ASR) despite being multimodal, suggesting that the safety
 regression in Gemma~3 was addressable. The extremely low transfer
 rate from Gemma~3 to Gemma~4 ($14.0\% \pm 2.7\%$) indicates that
-Gemma~4's improvements were not simply patches for known Gemma~3
-attacks but rather fundamental alignment improvements.
+Gemma~4's improvements generalize beyond the specific attack
+distributions evolved against Gemma~3.
 
 \paragraph{Persistent category-level weaknesses.}
 Copyright stands out as a category that \emph{no} Gemma generation
@@ -446,9 +451,7 @@ intellectual property-related behaviors. Cybercrime similarly resists
 alignment in all but Gemma~4 ($33.3\%$).
 
 \paragraph{What we claim and what we do not.}
-We document a non-monotonic robustness trajectory within one model
-family; we do \emph{not} claim a general safety-vs-size scaling law.
-With four data points, we cannot distinguish a U-shaped curve from
+With four data points we cannot distinguish a U-shaped curve from
 noise. What we \emph{can} say is that the Gemma~2 $\to$ Gemma~3
 regression is statistically significant and large ($+23.2$ percentage
 points), and that the transfer matrix provides converging evidence
@@ -509,12 +512,12 @@ we find that:
     \item Cross-generational attack transfer is generation-dependent:
           attacks from any source transfer to Gemma~3 at $\sim$45\%
           but only 14--18\% to Gemma~4, suggesting Gemma~4's
-          improvements are fundamental rather than superficial.
+          improvements generalize across attack distributions
+          evolved against earlier generations.
     \item Vulnerability profiles are category-dependent: copyright
-          remains at 100\% ASR across all generations, while
-          harassment shows consistent improvement and misinformation
-          exhibits a 71$\times$ regression in Gemma~3 before
-          recovering in Gemma~4.
+          remains at 100\% ASR across all generations, Gemma~4
+          achieves 0\% in three categories, but misinformation
+          remains elevated ($76.9\%$) even in the safest generation.
 \end{enumerate}
 
 These results underscore the need for \emph{adaptive, longitudinal}
