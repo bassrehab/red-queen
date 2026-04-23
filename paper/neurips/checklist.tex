@@ -75,10 +75,11 @@
         \item Does the paper report error bars suitably and correctly
               defined or other appropriate information about the statistical
               significance of the experiments?
-    \answerNo{Evolution is stochastic but we report single runs per model
-    due to compute constraints. We acknowledge this limitation and note
-    that the transfer matrix captures cross-model variance. Future work
-    should include multiple seeds per model.}
+    \answerYes{All experiments use 3 independent random seeds per model.
+    We report mean $\pm$ standard deviation and 95\% bootstrap confidence
+    intervals. Paired bootstrap tests are used for pairwise model
+    comparisons ($p < 0.05$ threshold). We acknowledge that $N = 3$
+    provides limited power for some contrasts.}
     \end{enumerate}
 
 \item {\bf Experiments Compute Resources}
@@ -170,9 +171,10 @@
         \item Does the paper describe the usage of LLMs in the research
               and/or writing process?
     \answerYes{LLMs are used in two capacities: (1)~as evaluation targets
-    (the models being probed for safety), and (2)~as an automated judge
-    (GPT-5.4-mini scoring target responses). Claude Code was used to
-    assist with framework development and analysis scripts.}
+    (the Gemma models being probed for safety), and (2)~as a self-hosted
+    automated judge (Llama-3.1-8B-Instruct scoring target responses).
+    Claude Code was used to assist with framework development and
+    analysis scripts.}
     \end{enumerate}
 
 \end{enumerate}
