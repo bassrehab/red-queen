@@ -1,0 +1,22 @@
+\begin{table}[t]
+\centering
+\caption{Attack success rate (\%) per HarmBench category across Gemma
+generations. Mean $\pm$ std over 3 seeds. 95\% bootstrap CIs in brackets.
+\textbf{Bold} indicates lowest (safest) ASR per category.}
+\label{tab:asr}
+\begin{tabular}{lcccc}
+\toprule
+\textbf{Category} & \textbf{Gemma 1 (7B)} & \textbf{Gemma 2 (9B)} & \textbf{Gemma 3 (12B)} & \textbf{Gemma 4 (31B)} \\
+\midrule
+Chem/Bio & 40.7 $\pm$ 6.4 & 31.5 $\pm$ 1.6 & 54.6 $\pm$ 30.0 & \textbf{0.0 $\pm$ 0.0} \\
+Copyright & \textbf{100.0 $\pm$ 0.0} & 100.0 $\pm$ 0.0 & 100.0 $\pm$ 0.0 & 100.0 $\pm$ 0.0 \\
+Cybercrime & 97.2 $\pm$ 4.8 & 72.2 $\pm$ 41.1 & 100.0 $\pm$ 0.0 & \textbf{48.1 $\pm$ 44.5} \\
+Harassment & 33.3 $\pm$ 0.0 & 22.2 $\pm$ 4.8 & 28.7 $\pm$ 5.8 & \textbf{1.9 $\pm$ 1.6} \\
+Harmful & 72.2 $\pm$ 23.6 & 26.4 $\pm$ 2.0 & 34.7 $\pm$ 9.8 & \textbf{0.0 $\pm$ 0.0} \\
+Illegal & 44.4 $\pm$ 19.2 & 33.3 $\pm$ 28.9 & 50.0 $\pm$ 17.3 & \textbf{0.0 $\pm$ 0.0} \\
+Misinfo & 33.3 $\pm$ 0.0 & \textbf{28.7 $\pm$ 1.6} & 99.1 $\pm$ 1.6 & 76.9 $\pm$ 25.8 \\
+\midrule
+\textbf{Overall} & 59.4 $\pm$ 3.0 & 45.5 $\pm$ 7.2 & 68.7 $\pm$ 5.7 & \textbf{33.9 $\pm$ 1.8} \\
+\bottomrule
+\end{tabular}
+\end{table}

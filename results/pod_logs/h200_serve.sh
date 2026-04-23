@@ -1,0 +1,10 @@
+#!/bin/bash
+set -eu
+MODEL="${1:?Usage: ./serve.sh MODEL_ID [PORT]}"
+PORT="${2:-8000}"
+export HF_HOME=/workspace/hf-cache
+export HF_TOKEN="$(cat /root/.cache/huggingface/token 2>/dev/null || echo none)"
+python3 -m vllm.entrypoints.openai.api_server \
+  --model "$MODEL" --dtype bfloat16 --host 0.0.0.0 --port "$PORT" \
+  --max-model-len 4096 --gpu-memory-utilization 0.90 --trust-remote-code \
+  2>&1 | tee /workspace/vllm_server.log
