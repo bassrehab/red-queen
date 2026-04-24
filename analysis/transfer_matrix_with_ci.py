@@ -176,7 +176,7 @@ def main():
     for i in range(n):
         for j in range(n):
             m = mean_matrix[i, j]
-            c = ci_half[i, j]
+            s = std_matrix[i, j]
             if not np.isnan(m):
                 color = "white" if m > 0.5 else "black"
                 fontweight = "bold" if i == j else "normal"
