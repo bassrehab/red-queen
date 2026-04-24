@@ -90,9 +90,11 @@
               information on the computer resources (type of compute
               workers, memory, time for each experiment, etc.) needed to
               reproduce the experiments?
-    \answerYes{Section~\ref{sec:setup} reports: NVIDIA H200 NVL (141\,GB),
-    vLLM 0.19.1, total GPU time $\sim$55 hours across two machines.
-    }
+    \answerYes{Section~\ref{sec:setup} reports: NVIDIA H200 (141\,GB) for
+    targets, RTX~4090 (24\,GB) for the 8B judge, vLLM 0.19.1. Total GPU
+    time: $\sim$60 hours (12 evolution runs at $\sim$4h each, 36 transfer
+    replays at $\sim$8min each, 4 raw-seed baselines, 1 judge audit with
+    Llama-3.1-70B on the H200).}
     \end{enumerate}
 
 \item {\bf Code Of Ethics}
@@ -136,8 +138,7 @@
               the license and terms of use explicitly mentioned and properly
               respected?
     \answerYes{HarmBench is cited and used under its original license.
-    Gemma models are used under Google's Gemma license. Proprietary
-    models are used under Google's Gemma license. The judge model
+    Gemma models are used under Google's Gemma license. The judge model
     (Llama-3.1-8B-Instruct) is used under Meta's license.}
     \end{enumerate}
 
