@@ -316,9 +316,18 @@ Misinfo           & $33.3 \pm 0.0$ & $\mathbf{28.7 \pm 1.6}$ & $99.1 \pm 1.6$ & 
 \end{tabular}
 \end{table}
 
-This pattern is not uniform across categories. Copyright remains at
-100\% ASR across all four generations; every model fails this category
-completely. Gemma~4 achieves 0\% ASR in three categories (chem/bio,
+To verify that evolution contributes beyond raw seed prompts, we
+evaluated all 400 HarmBench seeds without evolution (1 generation,
+batch 400). Baseline ASRs are lower across all models
+(52.1\%/38.1\%/54.6\%/25.8\% for Gemma~1--4), and evolution adds
+7--14 percentage points. Crucially, the non-monotonic pattern holds
+even for raw seeds, confirming it is not an artifact of the
+evolutionary process.
+
+This pattern is not uniform across categories. Copyright is
+consistently the highest-ASR category across all generations,
+though a second-judge audit (Appendix) suggests the 8B judge may
+over-classify copyright responses as harmful. Gemma~4 achieves 0\% ASR in three categories (chem/bio,
 harmful, illegal) but retains high misinformation ASR
 ($76.9\% \pm 25.8\%$). Misinformation exhibits the most dramatic
 trajectory: $28.7\%$ in Gemma~2, spiking to $99.1\%$ in Gemma~3,
@@ -444,10 +453,15 @@ Gemma~4's improvements generalize beyond the specific attack
 distributions evolved against Gemma~3.
 
 \paragraph{Persistent category-level weaknesses.}
-Copyright stands out as a category that \emph{no} Gemma generation
-has addressed: 100\% ASR across all four models and all 9 seed-model
-combinations. This suggests a fundamental gap in safety training for
-intellectual property-related behaviors. Cybercrime similarly resists
+Copyright is consistently the highest-ASR category across all
+generations. However, a second-judge audit using
+Llama-3.1-70B-Instruct found that the 70B judge classified only
+50\% of copyright responses as harmful (vs.\ 100\% for the 8B
+judge), suggesting that the 8B judge's harm threshold for copyright
+is more permissive. Overall, the two judges agree on refusal
+(96.2\%) but show weak agreement on harm classification
+($\kappa = 0.15$, $N = 52$). Per-category ASRs should be
+interpreted with this caveat. Cybercrime similarly resists
 alignment in all but Gemma~4 ($33.3\%$).
 
 \paragraph{What we claim and what we do not.}
