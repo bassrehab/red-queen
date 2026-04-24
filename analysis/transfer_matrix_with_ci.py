@@ -180,7 +180,7 @@ def main():
             if not np.isnan(m):
                 color = "white" if m > 0.5 else "black"
                 fontweight = "bold" if i == j else "normal"
-                text = f"{m:.0%}\n±{c:.0%}"
+                text = f"{m:.0%}\n±{s:.0%}"
                 ax.text(j, i, text, ha="center", va="center",
                         color=color, fontweight=fontweight, fontsize=8)
 
@@ -188,7 +188,7 @@ def main():
     cbar.set_ticks([0, 0.25, 0.5, 0.75, 1.0])
     cbar.set_ticklabels(["0%", "25%", "50%", "75%", "100%"])
 
-    fig.text(0.5, 0.01, "Cells show mean ASR ± 95% CI half-width across 3 seeds",
+    fig.text(0.5, 0.01, "Cells show mean ASR ± std across 3 seeds",
              ha="center", fontsize=7, style="italic")
 
     plt.tight_layout()

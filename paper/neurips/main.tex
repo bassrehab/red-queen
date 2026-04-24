@@ -99,11 +99,13 @@ vulnerabilities persist and which are patched.
           regression ($p = 0.030$; \S\ref{sec:results:transfer}).
     \item Empirical evidence that adversarial robustness does not improve
           monotonically across model generations within a single family,
-          with a non-monotonic pattern driven by architectural changes
+          with a non-monotonic pattern coinciding with an architectural
+          transition
           (\S\ref{sec:results:scaling}).
     \item Category-level analysis showing that some harm categories
-          resist safety alignment across all generations while others
-          show broadly declining trajectories
+          (notably copyright, under our 8B judge) appear to resist
+          safety alignment across all generations while others show
+          broadly declining trajectories
           (\S\ref{sec:discussion}).
 \end{itemize}
 
@@ -300,9 +302,7 @@ of our sample size that we discuss in \S\ref{sec:discussion}.
 \caption{Attack success rate (\%) per HarmBench category across Gemma
 generations (mean $\pm$ std, 3 seeds). \textbf{Bold} indicates lowest
 (safest) ASR per category. Cells with $\pm 0.0$ reflect floor or
-ceiling effects where all seeds converged to the same value.
-Gemma~4 ``harmful'' is based on 2 seeds (category absent from one
-seed's archive).}
+ceiling effects where all seeds converged to the same value.}
 \label{tab:asr}
 \begin{tabular}{lcccc}
 \toprule
@@ -313,7 +313,7 @@ Chem/Bio          & $40.7 \pm 6.4$ & $31.5 \pm 1.6$ & $54.6 \pm 30.0$ & $\mathbf
 Copyright         & $100.0 \pm 0.0$ & $100.0 \pm 0.0$ & $100.0 \pm 0.0$ & $100.0 \pm 0.0$ \\
 Cybercrime\textsuperscript{$\dagger$} & $97.2 \pm 4.8$ & $72.2 \pm 41.1$ & $100.0 \pm 0.0$ & $48.1 \pm 44.5$ \\
 Harassment        & $33.3 \pm 0.0$ & $22.2 \pm 4.8$ & $28.7 \pm 5.8$ & $\mathbf{1.9 \pm 1.6}$ \\
-Harmful           & $72.2 \pm 23.6$ & $\mathbf{26.4 \pm 2.0}$ & $34.7 \pm 9.8$ & $\mathbf{0.0 \pm 0.0}$ \\
+Harmful           & $72.2 \pm 23.6$ & $\mathbf{26.4 \pm 2.0}$ & $34.7 \pm 9.8$ & $\mathbf{0.0 \pm 0.0}$\textsuperscript{$\ddagger$} \\
 Illegal           & $44.4 \pm 19.2$ & $33.3 \pm 28.9$ & $50.0 \pm 17.3$ & $\mathbf{0.0 \pm 0.0}$ \\
 Misinfo           & $33.3 \pm 0.0$ & $\mathbf{28.7 \pm 1.6}$ & $99.1 \pm 1.6$ & $76.9 \pm 25.8$ \\
 \midrule
@@ -324,7 +324,10 @@ Misinfo           & $33.3 \pm 0.0$ & $\mathbf{28.7 \pm 1.6}$ & $99.1 \pm 1.6$ & 
 {\footnotesize
 \textsuperscript{$\dagger$}Gemma~4 cybercrime shows high cross-seed
 variance (2.8\%, 50.0\%, 91.7\% across seeds), reflecting genuine
-sensitivity to the evolutionary trajectory rather than a pipeline error.
+sensitivity to the evolutionary trajectory rather than a pipeline error.\\
+\textsuperscript{$\ddagger$}Based on 2 seeds; one seed's archive
+contained zero harmful-category entries (the evolution did not populate
+those niches).
 }
 \end{table}
 
@@ -361,10 +364,10 @@ are self-evaluation rates.}
 
 \paragraph{Gemma~3 is the easiest transfer target.} Archives from
 other generations transfer to Gemma~3 at 44--46\%
-($45.5\%$/$44.5\%$/$45.5\%$ from Gemma~1/2/4). A niche decomposition
-(Jaccard similarity 0.66--0.75) confirms that the same attack niches
-succeed regardless of source, indicating vulnerability to a generic
-class of attacks.
+($45.5\%$/$44.5\%$/$45.5\%$ from Gemma~1/2/4). A niche decomposition finds Jaccard similarity of 0.66--0.75 among
+the successful niches across source archives, indicating substantial
+overlap in which (strategy $\times$ encoding $\times$ category) cells
+succeed regardless of source.
 
 \paragraph{Gemma~4 resists transfer.} Transfer rates to Gemma~4 are
 14--18\% from all sources. Despite Gemma~3's high self-ASR ($68.7\%$),

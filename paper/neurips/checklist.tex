@@ -10,8 +10,9 @@
         \item Do the main claims made in the abstract and introduction
               accurately reflect the paper's contributions and scope?
     \answerYes{The abstract states two specific research questions
-    (cross-generational transfer and safety scaling) and the introduction
-    enumerates four concrete contributions, each tied to a results section.}
+    (cross-generational transfer and non-monotonic robustness) and the
+    introduction enumerates four concrete contributions, each tied to a
+    results section.}
     \end{enumerate}
 
 \item {\bf Limitations}
@@ -19,9 +20,10 @@
         \item Does the paper discuss the limitations of the work performed
               by the authors?
     \answerYes{Section~\ref{sec:discussion} includes a dedicated Limitations
-    paragraph covering: small N for scaling, single model family,
-    HarmBench coverage bounds, LLM judge bias, and evolutionary probe
-    coverage limitations.}
+    paragraph covering: limited statistical power with 3 seeds, single
+    model family, weak agreement between 8B and 70B judges on harm
+    classification ($\kappa = 0.15$), HarmBench coverage bounds,
+    evolutionary probe coverage, and text-only modality limitation.}
     \end{enumerate}
 
 \item {\bf Theory Assumptions and Proofs}
@@ -78,8 +80,8 @@
               defined or other appropriate information about the statistical
               significance of the experiments?
     \answerYes{All experiments use 3 independent random seeds per model.
-    We report mean $\pm$ standard deviation and 95\% bootstrap confidence
-    intervals. Paired bootstrap tests are used for pairwise model
+    We report mean $\pm$ standard deviation across 3 seeds.
+    Paired bootstrap tests are used for pairwise model
     comparisons ($p < 0.05$ threshold). We acknowledge that $N = 3$
     provides limited power for some contrasts.}
     \end{enumerate}
@@ -175,7 +177,9 @@
               and/or writing process?
     \answerYes{LLMs are used in two capacities: (1)~as evaluation targets
     (the Gemma models being probed for safety), and (2)~as a self-hosted
-    automated judge (Llama-3.1-8B-Instruct scoring target responses).}
+    automated judge (Llama-3.1-8B-Instruct scoring target responses).
+    An AI coding assistant (Claude Code) was used to assist with
+    analysis scripts, figure generation, and framework modifications.}
     \end{enumerate}
 
 \end{enumerate}
