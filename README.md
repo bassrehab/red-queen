@@ -92,10 +92,16 @@ results.export("jailbreaks.json")
 └─────────────────────────┘     └─────────────────────────┘
 ```
 
-## Paper
+## Papers
 
-**Quality-Diversity Evolution for Discovering Diverse Vulnerabilities in LLM Safety**
-*Subhadip Mitra* — Published at ICLR 2026 Workshop on Agents in the Wild
+| Paper | Published | Exact code and paper source |
+|---|---|---|
+| **Quality-Diversity Evolution for Discovering Diverse Vulnerabilities in LLM Safety** | ICLR 2026 Workshop on Agents in the Wild; [arXiv:2606.00801](https://arxiv.org/abs/2606.00801) | tag [`qd-arxiv-v1`](https://github.com/bassrehab/red-queen/tree/qd-arxiv-v1) |
+| **Cross-Generational Transfer of Adversarial Attacks Reveals Non-Monotonic Safety Alignment in LLMs** (Gemma 1–4) | [arXiv:2606.00813](https://arxiv.org/abs/2606.00813) | tag [`gemma-arxiv-v1`](https://github.com/bassrehab/red-queen/tree/gemma-arxiv-v1) |
+
+The experiment code, evolution archives, transfer replays and analysis scripts for both papers are on the [`arxiv-extended`](https://github.com/bassrehab/red-queen/tree/arxiv-extended) branch. Each tag pins the exact arXiv source in `paper/arxiv-submission-*`.
+
+**Note on the Gemma paper's metric.** Version 1 counted an attack as successful whenever the judge did not label the response a refusal (`fitness > 0`), so its "ASR" is really a non-refusal rate. Version 2 counts success only when the judge labels the response non-refusing *and* harmful (score >= 0.7). That lowers the rates (overall 12–34% instead of 34–69%) and removes the significance claims. `analysis/gemma_v2_harm_asr/` on `arxiv-extended` reproduces the v2 numbers.
 
 ## Documentation
 
